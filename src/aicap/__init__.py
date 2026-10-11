@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import datetime as _dt
+import os as _os
 import platform as _platform
 import subprocess as _sp
 from pathlib import Path as _Path
 
 ROOT = _Path(__file__).resolve().parents[2]
-OUTPUTS = ROOT / "outputs"
+# AICAP_OUTPUTS redirects every output (caches, figures, handoff, summary) - used by the end-to-end tests
+OUTPUTS = _Path(_os.environ.get("AICAP_OUTPUTS", ROOT / "outputs"))
 
 
 def run_info() -> dict:

@@ -37,7 +37,9 @@ LIGHT_RED = "#f8d3d0"
 DIVERGING = LinearSegmentedColormap.from_list(
     "blue_gray_red", [BLUE_RAMP[650], BLUE_RAMP[450], BLUE_RAMP[250], NEUTRAL_MID, "#f2a7a3", RED, DARK_RED], N=256)
 
-FIG_DIR = Path(__file__).resolve().parents[2] / "outputs" / "figures"
+def _fig_dir() -> Path:
+    from . import OUTPUTS
+    return OUTPUTS / "figures"
 LABEL_BOX = dict(boxstyle="round,pad=0.25", fc=SURFACE, ec="none", alpha=0.85)
 
 
@@ -61,7 +63,7 @@ def apply_style() -> None:
 
 
 def save(fig, name: str, outdir: Path | None = None) -> list[Path]:
-    outdir = Path(outdir) if outdir else FIG_DIR
+    outdir = Path(outdir) if outdir else _fig_dir()
     outdir.mkdir(parents=True, exist_ok=True)
     paths = [outdir / f"{name}.png", outdir / f"{name}.svg"]
     fig.savefig(paths[0], dpi=200)

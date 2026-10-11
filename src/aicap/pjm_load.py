@@ -496,3 +496,15 @@ expected price impact. The gap between the two is the price of uncertainty itsel
     return HANDOFF
 
 
+
+
+def cv_lognormal_equivalent(x) -> float:
+    """CV of the lognormal with the same log-variance as the samples: sqrt(e^{Var ln x} - 1)."""
+    return float(np.sqrt(np.expm1(np.log(np.asarray(x, dtype=float)).var())))
+
+
+def cv_2030_range(sim: dict) -> tuple[float, float]:
+    """Delivery-year (2030/31) rate uncertainty used to place AI on the regime map: the
+    lognormal-equivalent CV of P_T under the two efficiency structures."""
+    v = sorted(cv_lognormal_equivalent(sim[(2030, s)]["PT"]) for s in EFFICIENCY_STRUCTURES)
+    return v[0], v[1]

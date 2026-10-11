@@ -36,16 +36,6 @@ COX_CACHE = OUTPUTS / "cache" / "cox_sim.npz"
 COX_SETTINGS = dict(nbar=np.logspace(1, 6, 11), sigmas=(1.0, 2.0, 3.0), cv_rate=0.5, seed=20251011, budget=2e8)
 
 
-SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
-
-
-def sci(x: float, digits: int = 1) -> str:
-    """2.9e5 -> '2.9×10⁵' (for figure labels)."""
-    m, e = f"{x:.{digits}e}".split("e")
-    m = m.rstrip("0").rstrip(".") if "." in m else m
-    return f"{m}×10{str(int(e)).translate(SUPERSCRIPT)}"
-
-
 def jsonable(x):
     """Recursively convert numpy types for json.dump."""
     if isinstance(x, dict):
@@ -268,20 +258,11 @@ def main(argv=None) -> dict:
     sim = pl.simulate(n=N_DRAWS, seed=SEED)
     summary["partD"] = pl.summarize(sim)
     # AI regime numbers need the delivery-year CV from part D
-    cvs = summary["partD"]["cv_PT"]
-    cv2030 = (min(cvs["2030_matures"]["cv_lognormal_equivalent"], cvs["2030_compounding"]["cv_lognormal_equivalent"]),
-              max(cvs["2030_matures"]["cv_lognormal_equivalent"], cvs["2030_compounding"]["cv_lognormal_equivalent"]))
-    ai = cox.ai_regime_numbers(cv_2030=cv2030)
+    ai = cox.ai_regime_numbers(cv_2030=pl.cv_2030_range(sim))
     summary["partC"]["ai_regime"] = ai
     # Figure 2 (needs B, C, D)
     kappa = summary["partB"]["meta"]["boundary"]["gamma"]["kappa_median"]
-    boxes = {"concurrency": (ai["concurrency"]["R_lo"], ai["concurrency"]["R_hi"], *ai["assumptions"]["cv_day_ahead"]),
-             "daily_2030": (ai["daily"]["E_eff_lo"], ai["daily"]["E_eff_hi"], *cv2030),
-             "labels": {"concurrency": f"AI today, day-ahead:\nR ≈ {sci(ai['concurrency']['R'])} in service, "
-                                       f"CV {100 * ai['assumptions']['cv_day_ahead'][0]:.0f}–"
-                                       f"{100 * ai['assumptions']['cv_day_ahead'][1]:.0f}%",
-                        "daily_2030": f"AI in 2030, daily energy:\nE_eff ≈ {sci(ai['daily']['E_eff_lo'], 0)}–"
-                                      f"{sci(ai['daily']['E_eff_hi'], 0)}, CV ≈ {cv2030[0]:.1f}–{cv2030[1]:.1f}"}}
+    boxes = cox.regime_boxes(ai)
     fig = plotting.fig2_regime_map(summary["partB"].pop("_grid"), kappa, boxes)
     plotting.save(fig, "fig2_regime_map")
     # Figure 4

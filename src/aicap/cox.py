@@ -183,3 +183,30 @@ def ai_regime_numbers(nbar_range=(1e10, 2e10), sigma_range=(1.0, 3.0), prompts_p
         out["cv_2030"] = list(cv_2030)
         out["ratio_2030_vs_daily"] = [cv_2030[0] * np.sqrt(e_lo), cv_2030[1] * np.sqrt(e_hi)]
     return out
+
+
+_SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def sci(x: float, digits: int = 1) -> str:
+    """2.9e5 -> '2.9×10⁵' (figure labels)."""
+    m, e = f"{x:.{digits}e}".split("e")
+    if "." in m:
+        m = m.rstrip("0").rstrip(".")
+    return f"{m}×10{str(int(e)).translate(_SUPERSCRIPT)}"
+
+
+def regime_boxes(ai: dict) -> dict:
+    """Boxes and labels for the zoomed-out panel of the regime map (figure 2)."""
+    c, d = ai["concurrency"], ai["daily"]
+    cv_da, cv30 = ai["assumptions"]["cv_day_ahead"], ai["cv_2030"]
+    return {
+        "concurrency": (c["R_lo"], c["R_hi"], cv_da[0], cv_da[1]),
+        "daily_2030": (d["E_eff_lo"], d["E_eff_hi"], cv30[0], cv30[1]),
+        "labels": {
+            "concurrency": f"AI today, day-ahead:\nR ≈ {sci(c['R'])} in service, "
+                           f"CV {100 * cv_da[0]:.0f}–{100 * cv_da[1]:.0f}%",
+            "daily_2030": f"AI in 2030, daily energy:\nE_eff ≈ {sci(d['E_eff_lo'], 0)}–{sci(d['E_eff_hi'], 0)}, "
+                          f"CV ≈ {cv30[0]:.1f}–{cv30[1]:.1f}",
+        },
+    }
