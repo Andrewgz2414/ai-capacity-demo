@@ -20,11 +20,17 @@ fall, and part C shows the per-query noise is ~1e-5 of the epistemic spread.
 
 from __future__ import annotations
 
+import json
+import time
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 from scipy import integrate, special, stats
 
 from .params import (ALTMAN_WH, CHATGPT_PROMPTS_PER_DAY, COST_RATIOS, DELIVERY_YEARS,
-                     EFFICIENCY_STRUCTURES, N_DRAWS, PJM_DC_GROWTH_GW, PRIORS, SEED)
+                     EFFICIENCY_STRUCTURES, N_DRAWS, PJM_DC_GROWTH_GW, PJM_SUMMER_PEAK_2026_GW,
+                     PRESENTER1_STATUS, PRIORS, PRIORS_VERSION, SEED, priors_table, scaled_priors)
 
 HOURS_PER_DAY = 24.0
 W_PER_GW = 1e9
@@ -314,3 +320,179 @@ def lognormal_from_samples_quantile(x, q: float) -> float:
     """Quantile of the lognormal with the same log-mean and log-variance as the samples."""
     lnx = np.log(x)
     return float(np.exp(lnx.mean() + lnx.std() * stats.norm.ppf(q)))
+
+
+# ---------------------------------------------------------------------------
+# Summaries and handoff (used by scripts/run_all.py and the notebook)
+# ---------------------------------------------------------------------------
+
+
+def default_handoff_dir() -> Path:
+    from . import OUTPUTS
+    return OUTPUTS / "handoff"
+
+
+def _jsonable(x):
+    if isinstance(x, dict):
+        return {str(k): _jsonable(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_jsonable(v) for v in x]
+    if isinstance(x, np.ndarray):
+        return _jsonable(x.tolist())
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating):
+        return float(x)
+    if isinstance(x, np.bool_):
+        return bool(x)
+    return x
+
+
+def summarize(sim: dict, n_boot: int = 200, verbose: bool = True) -> dict:
+    """All Part D numbers for summary.json: quantiles with SEs, capacity, 30 GW position, cost of uncertainty,
+    tail, lognormal checks, Fermi ladders, halved-uncertainty rerun, flexible load, per-type table."""
+    t = time.time()
+    out = {"n_draws": sim["n"], "seed": sim["seed"], "priors_version": PRIORS_VERSION,
+           "presenter1_status": PRESENTER1_STATUS, "priors": priors_table(),
+           "delivery_years": DELIVERY_YEARS, "cost_ratios": list(COST_RATIOS), "pjm_dc_growth_GW": PJM_DC_GROWTH_GW,
+           "pjm_summer_peak_2026_GW": PJM_SUMMER_PEAK_2026_GW}
+    q, cap, pos, cou, tail, lnchk, cvs = {}, {}, {}, {}, {}, {}, {}
+    for year, dy in DELIVERY_YEARS.items():
+        for s in EFFICIENCY_STRUCTURES:
+            d = sim[(year, s)]
+            key = f"{year}_{s}"
+            q[key] = quantile_table(d["dQ"], probs=(0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95), n_boot=n_boot,
+                                    seed=year)
+            cap[key] = quantile_capacity(d["dQ"])
+            pos[key] = position_of(d["dQ"])
+            cou[key] = cost_of_uncertainty(d["dQ"])
+            tail[key] = {"P99": float(np.quantile(d["dQ"], 0.99)), "P999": float(np.quantile(d["dQ"], 0.999)),
+                         "max": float(d["dQ"].max()),
+                         "p_exceed_pjm_peak": float(np.mean(d["dQ"] > PJM_SUMMER_PEAK_2026_GW))}
+            lnchk[key] = lognormal_check(d["PT"], dy["T"], s)
+            lv = lnchk[key]["mc_var_log"]
+            cvs[key] = {"cv_lognormal_equivalent": float(np.sqrt(np.expm1(lv))), "cv_sample": mc_cv(d["PT"]),
+                        "log_sd": float(np.sqrt(lv))}
+            q[key]["PT"] = quantile_table(d["PT"], probs=(0.10, 0.50, 0.90), n_boot=50, seed=year)
+    p0 = sim[(2030, "matures")]["P0"]
+    out["P0"] = quantile_table(p0, probs=(0.10, 0.50, 0.90), n_boot=50)
+    out["P0_lognormal_check"] = lognormal_check(p0, 0, when="0")
+    out.update(quantiles=q, quantile_capacity=cap, pjm_30GW=pos, cost_of_uncertainty=cou, tail=tail,
+               lognormal_check=lnchk, cv_PT=cvs)
+    out["fermi_ladder"] = {f"{y}_{s}": fermi_ladder(DELIVERY_YEARS[y]["T"], s)
+                           for y in DELIVERY_YEARS for s in EFFICIENCY_STRUCTURES}
+    th_med = median_params()
+    out["at_prior_medians"] = {f"{y}": {"P0_GW": float(p0_gw(th_med)[0]),
+                                        "PT_GW": float(pT_gw(th_med, DELIVERY_YEARS[y]["T"])[0])}
+                               for y in DELIVERY_YEARS}
+    # better forecasting: halve the log-sd (uniform: half-width) of the growth and mix priors
+    half = simulate(n=sim["n"], seed=sim["seed"], priors=scaled_priors(["growth", "mix"], 0.5))
+    hcou = {}
+    for year in DELIVERY_YEARS:
+        for s in EFFICIENCY_STRUCTURES:
+            key = f"{year}_{s}"
+            c = cost_of_uncertainty(half[(year, s)]["dQ"])
+            hcou[key] = c | {"base_gap": cou[key]["gap"], "shrink_fraction": 1 - c["gap"] / cou[key]["gap"],
+                             "p_exceed_30": float(np.mean(half[(year, s)]["dQ"] > PJM_DC_GROWTH_GW))}
+    out["halved_growth_mix_uncertainty"] = hcou
+    # flexible load: curtailment halves the shortage cost -> ratio 0.10 -> 0.20 -> P90 -> P80
+    d30 = sim[(2030, "matures")]["dQ"]
+    q90, q80 = float(np.quantile(d30, 0.90)), float(np.quantile(d30, 0.80))
+    out["flexible_load"] = {"ratio_before": 0.10, "ratio_after": 0.20, "Q_before": q90, "Q_after": q80,
+                            "reduction_GW": q90 - q80, "case": "2030_matures"}
+    # presenter 1's per-type table at prior medians (placeholders)
+    Mc, sc = PRIORS["M_c"].median, PRIORS["sigma_c"].median
+    types = {"chat": 1.0, "reasoning": PRIORS["r"].median, "agentic": PRIORS["a"].median}
+    out["per_type_at_medians"] = {k: {"median_Wh": Mc * m, "sigma": sc, "mean_Wh": Mc * m * np.exp(sc**2 / 2)}
+                                  for k, m in types.items()}
+    out["share_cap_binding_draws"] = int(np.sum(sim["theta"]["w_AT"] > 1 - sim["theta"]["w_RT"]))
+    if verbose:
+        print(f"[D] PJM model summaries in {time.time() - t:.1f} s")
+    return out
+
+
+def write_handoff(sim: dict, d: dict, info: dict, outdir=None) -> Path:
+    """Write the two sample CSVs, handoff_summary.json and README.md for presenter 3."""
+    HANDOFF = Path(outdir) if outdir else default_handoff_dir()
+    HANDOFF.mkdir(parents=True, exist_ok=True)
+    for year, dy in DELIVERY_YEARS.items():
+        frames = []
+        for s in EFFICIENCY_STRUCTURES:
+            r = sim[(year, s)]
+            frames.append(pd.DataFrame({"draw_id": np.arange(sim["n"]), "dQ_GW": r["dQ"], "P0_GW": r["P0"],
+                                        "PT_GW": r["PT"], "efficiency_structure": s}))
+        df = pd.concat(frames, ignore_index=True)
+        path = HANDOFF / f"dQ_samples_DY{year}.csv"
+        header = (f"# AI new PJM summer-peak load samples, delivery year {dy['label']} (T = {dy['T']} years from 2025)\n"
+                  f"# seed={sim['seed']} n_draws={sim['n']} per efficiency structure; priors_version={PRIORS_VERSION}; "
+                  f"date={info['timestamp']}; git={info['git_commit']}\n"
+                  "# units: GW. dQ_GW = PT_GW - P0_GW (can be negative). Same draw_id = same parameter draw in both "
+                  "efficiency structures and both delivery-year files.\n"
+                  "# efficiency_structure: matures (default) or compounding. See outputs/handoff/README.md.\n")
+        with open(path, "w") as f:
+            f.write(header)
+            df.to_csv(f, index=False, float_format="%.6g")
+    hs = {"run": info, "units": "GW", "n_draws": sim["n"], "seed": sim["seed"], "priors_version": PRIORS_VERSION,
+          "delivery_years": DELIVERY_YEARS, "quantiles": d["quantiles"], "quantile_capacity": d["quantile_capacity"],
+          "pjm_30GW": d["pjm_30GW"], "cost_of_uncertainty": d["cost_of_uncertainty"], "tail": d["tail"],
+          "P0_2025": d["P0"]}
+    (HANDOFF / "handoff_summary.json").write_text(json.dumps(_jsonable(hs), indent=2))
+    q = d["quantiles"]["2030_matures"]
+    t = d["tail"]["2030_matures"]
+    readme = f"""# Handoff to presenter 3: new PJM summer-peak load from AI (ΔQ)
+
+Generated by `scripts/run_all.py` on {info['timestamp']} (git {info['git_commit']}).
+Seed {sim['seed']}, {sim['n']:,} draws per efficiency structure, priors version {PRIORS_VERSION}.
+
+## Files
+
+| File | Content |
+|---|---|
+| `dQ_samples_DY2028.csv` | Delivery year 2028/29 (summer 2028, T = 3 years from 2025) |
+| `dQ_samples_DY2030.csv` | Delivery year 2030/31 (summer 2030, T = 5) |
+| `handoff_summary.json` | Quantile tables with Monte Carlo standard errors, quantile capacity, tail statistics |
+
+CSV columns: `draw_id, dQ_GW, P0_GW, PT_GW, efficiency_structure`. Lines starting with `#` are comments
+(`pandas.read_csv(path, comment="#")`). Each file has {2 * sim['n']:,} rows: the same {sim['n']:,} parameter draws under
+both efficiency structures (`matures` = default, `compounding`). Rows with the same `draw_id` share every
+parameter, in both files, so you can pair them.
+
+## Units and what ΔQ includes
+
+- All values are **GW of summer-peak load inside PJM**: average power (Wh/day ÷ 24 h) times a
+  summer-peak coincidence factor κ.
+- `P0_GW`: AI load in 2025. `PT_GW`: AI load in the delivery year. `dQ_GW = PT_GW − P0_GW`, the **new**
+  load; it can be negative (efficiency outruns growth), and the sign is kept.
+- Included: inference for all providers worldwide (requests/day × mean Wh per request, including the
+  reasoning/agentic mix and fleet overhead β), training as a multiple (1 + τ) of inference, the US share
+  and PJM's share of US data-centre load, and κ. Per-query energy follows the cited measurements, whose
+  boundaries differ (Google's 0.24 Wh already includes idle capacity and data-centre overhead).
+- **AI only.** PJM's "up to ~30 GW" figure covers all data-centre growth 2025–2030, not AI alone.
+
+## Key numbers, DY 2030/31, default efficiency (GW)
+
+| P10 | P50 | P90 | P95 | mean | P(ΔQ > 30 GW) |
+|---|---|---|---|---|---|
+| {q['P10']:.2f} | {q['P50']:.2f} | {q['P90']:.1f} | {q['P95']:.1f} | {q['mean']:.1f} | {q['p_exceed']:.3f} |
+
+## How to use the samples (Jensen)
+
+Push **every sample** through your price function p(ΔQ) and average the results. For a convex p,
+E[p(ΔQ)] ≥ p(E[ΔQ]) (Jensen's inequality), so plugging in the mean or the median understates the
+expected price impact. The gap between the two is the price of uncertainty itself.
+
+## Caveats you need before you use the tail
+
+- The upper tail comes from multiplying independent, wide lognormal priors and is not physical:
+  P99 = {t['P99']:.0f} GW, P99.9 = {t['P999']:.0f} GW, and the largest draw is {t['max']:,.0f} GW, while PJM's whole forecast
+  summer peak for 2026 is about {PJM_SUMMER_PEAK_2026_GW:.0f} GW ({100 * t['p_exceed_pjm_peak']:.1f}% of draws exceed it).
+  The **mean is pulled up by this tail**; quantiles up to P95 are robust.
+- With a steep (convex) price curve, E[p(ΔQ)] will be dominated by those draws. Report results with and
+  without a physical cap (for example, truncate or winsorize ΔQ at a level you can defend), and quote
+  quantiles of p(ΔQ) as well as its mean.
+- Priors are judgment-based and independent; presenter 1's per-query numbers are still placeholders.
+"""
+    (HANDOFF / "README.md").write_text(readme)
+    return HANDOFF
+
+

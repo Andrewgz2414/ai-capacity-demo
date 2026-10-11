@@ -168,3 +168,6 @@ def scaled_priors(groups, factor: float, priors: dict | None = None) -> dict:
     """Priors with the uncertainty of the given groups scaled by `factor` (e.g. 0.5 = halved)."""
     priors = priors or PRIORS
     return {k: (p.scaled(factor) if p.group in groups else p) for k, p in priors.items()}
+# PJM 2026 Load Forecast Report: summer peak 222,106 MW in 2036, +65,733 MW over 10 years, so the
+# 2026 forecast summer peak is 222,106 - 65,733 = 156,373 MW. Used only as a physical yardstick.
+PJM_SUMMER_PEAK_2026_GW = (222_106 - 65_733) / 1e3
