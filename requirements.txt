@@ -1,0 +1,14 @@
+# Core (tested with Python 3.13)
+numpy>=2.0
+scipy>=1.13
+pandas>=2.2
+matplotlib>=3.9
+jupyter
+nbconvert>=7.0
+nbformat>=5.9
+ipykernel>=6.29
+pytest>=8.0
+# Optional part (variance-based sensitivity)
+SALib>=1.5
+# Only used once to extract the paper text for refs/paper_notes.md
+pypdf>=4.0

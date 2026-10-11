@@ -1,0 +1,16 @@
+# Environment
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+*.egg-info/
+build/
+
+# Paper PDF is not redistributed (download link in refs/paper_notes.md)
+refs/*.pdf
+
+# Large regenerable handoff samples (deterministic: fixed seed; rebuild with scripts/run_all.py)
+outputs/handoff/*.csv
+
+.DS_Store
