@@ -1,8 +1,8 @@
 {
  "run": {
-  "timestamp": "2026-10-11T18:45:05-04:00",
-  "git_commit": "1c69981",
-  "git_dirty": true,
+  "timestamp": "2026-10-11T18:46:42-04:00",
+  "git_commit": "f8bfb71",
+  "git_dirty": false,
   "python": "3.13.13",
   "numpy": "2.5.4",
   "scipy": "1.18.1"
@@ -473,9 +473,9 @@
  "partB": {
   "meta": {
    "run": {
-    "timestamp": "2026-10-11T18:07:17-04:00",
-    "git_commit": "b028c30",
-    "git_dirty": true,
+    "timestamp": "2026-10-11T18:47:34-04:00",
+    "git_commit": "f8bfb71",
+    "git_dirty": false,
     "python": "3.13.13",
     "numpy": "2.5.4",
     "scipy": "1.18.1"
@@ -592,9 +592,9 @@
     "max_abs_diff_gap_det": 0.017988331001798086
    },
    "timings_s": {
-    "gamma": 9.112451076507568,
-    "lognormal": 9.73160696029663,
-    "gamma_refined": 33.489858627319336
+    "gamma": 8.776360988616943,
+    "lognormal": 9.258261919021606,
+    "gamma_refined": 32.61660718917847
    }
   },
   "grid_corners": {
@@ -2526,5 +2526,5 @@
    }
   }
  },
- "runtime_s": 8.371256113052368
+ "runtime_s": 104.13621807098389
 }
