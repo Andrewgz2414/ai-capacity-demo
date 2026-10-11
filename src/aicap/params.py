@@ -123,7 +123,8 @@ PRIORS: dict[str, Prior] = {p.name: p for p in [
        "Oviedo 8-20x line-of-sight; Blackwell 1.5-2.5x per watt; AI Energy Score v2: most newer models "
        "not more efficient"),
     _p("tau", "τ", "Training-to-inference energy ratio", "lognormal", 0.25, 1.5, "-", "training",
-       "Patterson et al. 2022 (~3/5 inference). VERIFY"),
+       "Patterson et al. 2022: about 3/5 of Google's ML energy for inference and 2/5 for training "
+       "(2019-2021), i.e. tau ~ 0.67 (checked in arXiv 2204.05149)"),
     _p("s_US", "s_US", "US share of global AI load", "uniform", 0.40, 0.60, "share", "siting and peak",
        "IEA 2025: US 45% of 2024 data-centre electricity"),
     _p("s_PJM", "s_PJM", "PJM share of US data-centre load", "uniform", 0.30, 0.50, "share", "siting and peak",

@@ -65,3 +65,10 @@ Decision: the 2 × ~20 MB handoff CSVs are git-ignored (deterministic with the f
 - Consistency: figure 2's AI boxes/labels are now built by one library function (`cox.regime_boxes`) for both run_all and the notebook; delivery-year CV via `pjm_load.cv_2030_range`.
 - `AICAP_OUTPUTS` environment variable redirects all outputs; `tests/test_end_to_end.py` (marked slow) runs run_all.py and nbconvert against a temporary copy of the caches so the real outputs/ stays untouched: 2 passed in 18 s.
 - Rehearsed the live toggle (EFFICIENCY = "compounding") on a copy: DY2030 median 0.98 GW, P90 12.95 GW; 30 GW at the 95.8 % quantile.
+
+**2026-10-11 20:40–21:45** — Documentation and source checks.
+- Checked three spec VERIFY items: Patterson et al. 2022 (arXiv 2204.05149, §7 and Conclusion: "about ⅗ of ML energy use is for inference and ⅖ for training" → τ ≈ 0.67, inside our prior; updated the τ source string); Halfin & Whitt 1981 (Operations Research 29(3):567–588 from the bibliographic record); Ross 12th-edition section numbers could not be confirmed (10th edition: §5.4.2 compound, §5.4.3 conditional Poisson) → stays VERIFY.
+- `docs/GUIDE.md` is rendered from `docs/GUIDE_TEMPLATE.md` by `scripts/build_guide.py`: 222 placeholders resolved from `summary.json` (unresolved placeholders raise). Proofreading found and fixed: an unescaped "|" breaking two tables, standard errors printing as "± 0.00", "nan" for the one lognormal row without a switch, priors printed as "8e+09", hand-typed numbers in prose (replaced by placeholders), and a misquoted range from the paper's Table 1 (22.3–148.1%, not 26–148%).
+- Added `test_jensen_gap_for_a_convex_price_curve` (the knowledge map cites it).
+- `docs/REFERENCES.md`: every spec §12 source with status (checked this build / checked by author / VERIFY). `README.md` written.
+- `run_info()` now reports `git_dirty` for code paths only (outputs written during the run are not "dirt").

@@ -27,7 +27,9 @@ def run_info() -> dict:
     return {
         "timestamp": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "git_commit": git("rev-parse", "--short", "HEAD") or "unknown",
-        "git_dirty": bool(git("status", "--porcelain", "--untracked-files=no")),
+        # uncommitted changes to the code (outputs written by the pipeline itself are ignored)
+        "git_dirty": bool(git("status", "--porcelain", "--untracked-files=no", "--", "src", "scripts",
+                              "tests", "pyproject.toml", "requirements.txt")),
         "python": _platform.python_version(),
         "numpy": numpy.__version__,
         "scipy": scipy.__version__,

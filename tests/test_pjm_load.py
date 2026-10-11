@@ -104,3 +104,11 @@ def test_prior_validation_shapes():
     assert all(isinstance(p, Prior) for p in PRIORS.values())
     for p in PRIORS.values():
         assert p.lo < p.hi and p.lo > 0
+
+
+def test_jensen_gap_for_a_convex_price_curve():
+    """For convex p, E[p(dQ)] >= p(E[dQ]) and > p(median): why the handoff is a distribution."""
+    dq = pl.simulate(n=50_000)[(2030, "matures")]["dQ"]
+    price = lambda x: 50 + 2 * np.maximum(x, 0) + 0.05 * np.maximum(x - 10, 0) ** 2  # noqa: E731 (convex)
+    assert price(dq).mean() >= price(dq.mean())
+    assert price(dq).mean() > price(np.median(dq))

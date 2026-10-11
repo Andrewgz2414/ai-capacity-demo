@@ -1,7 +1,7 @@
 {
  "run": {
-  "timestamp": "2026-10-11T18:31:24-04:00",
-  "git_commit": "58a378e",
+  "timestamp": "2026-10-11T18:45:05-04:00",
+  "git_commit": "1c69981",
   "git_dirty": true,
   "python": "3.13.13",
   "numpy": "2.5.4",
@@ -1220,7 +1220,7 @@
     "log_sd": 0.5446408502729816,
     "unit": "-",
     "group": "training",
-    "source": "Patterson et al. 2022 (~3/5 inference). VERIFY",
+    "source": "Patterson et al. 2022: about 3/5 of Google's ML energy for inference and 2/5 for training (2019-2021), i.e. tau ~ 0.67 (checked in arXiv 2204.05149)",
     "assumption": false
    },
    {
@@ -2526,5 +2526,5 @@
    }
   }
  },
- "runtime_s": 8.593053102493286
+ "runtime_s": 8.371256113052368
 }
