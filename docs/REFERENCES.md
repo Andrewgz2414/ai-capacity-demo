@@ -47,6 +47,14 @@ Every source listed in spec §12, nothing added. Status key:
 | A. Saltelli et al. (2010). *Comput. Phys. Commun.* 181(2):259–270 | — | Sobol estimators / sampling design used by SALib (optional part) | checked (author) |
 | S. M. Ross. *Introduction to Probability Models*, 12th ed. | — | Poisson, compound Poisson and mixed Poisson processes (knowledge map #1–3) | **VERIFY**: section numbers for compound and conditional (mixed) Poisson processes not confirmed for the 12th edition (the 10th edition uses §5.4.2 and §5.4.3, per a course page found by search). Cite the chapter (ch. 5) only until checked |
 
+## Bridge to presenter 3 (water)
+
+| Source | Link | Used for | Status |
+|---|---|---|---|
+| P. Li, J. Yang, M. A. Islam, S. Ren. "Making AI less 'thirsty': uncovering and addressing the secret water footprint of AI models." *Communications of the ACM* (accepted); arXiv:2304.03271 v5 (26 Mar 2025) | [arXiv:2304.03271](https://arxiv.org/abs/2304.03271) | What presenter 3 needs from this demo: the operational water footprint Water = Σₜ eₜ[ρ_s1,t + θₜρ_s2,t] with e = server energy (sets the energy boundary of the handoff); PUE/WUE/EWIF values quoted in the handoff README and guide §2.22 | **checked (this build)**: §3.1 (p.4) formula and definitions; Table 1 values for the U.S. average (PUE 1.170, on-site WUE 0.550 L/kWh, off-site EWIF 3.142 L/kWh), Virginia (1.140, 0.140, 2.385) and the PUE range 1.11–1.43 across listed locations |
+
+Presenter 3's second reference (Islam et al. 2017, *IEEE Transactions on Cloud Computing* 5(2):208–220) is mentioned in the guide only as she describes it. It was not opened in this build, so it is not listed here.
+
 ## Software
 
 numpy, scipy, pandas, matplotlib, jupyter/nbconvert, pytest, SALib (Sobol sampling and analysis), pypdf (text extraction for the notes). Exact versions in `requirements-lock.txt`.

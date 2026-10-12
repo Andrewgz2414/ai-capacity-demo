@@ -123,6 +123,9 @@ def derived(s: dict) -> dict:
         "ladder_end_2030_comp": D["fermi_ladder"]["2030_compounding"][-1]["MW"],
         "growth_plus_mix": s["sobol"]["matures"]["log_scale"]["S1"]["growth"] + s["sobol"]["matures"]["log_scale"]["S1"]["mix"],
         "agentic_term_log_sd": float(np.hypot(*[p["log_sd"] for p in D["priors"] if p["name"] in ("a", "w_AT")])),
+        "pjm_E2030_P90_over_median": D["energy"]["cases"]["2030_matures"]["PJM"]["E"]["P90"]
+        / D["energy"]["cases"]["2030_matures"]["PJM"]["E"]["P50"],
+        "pjm_E2030_median_gwh_day": D["energy"]["cases"]["2030_matures"]["PJM"]["E"]["P50"] * D["energy"]["twh_to_gwh_per_day"],
     }
     return d
 
@@ -287,7 +290,29 @@ def t_halved(s):
                      "P(ΔQ > 30 GW)"], rows)
 
 
-TABLES = {"repro23": t_repro23, "repro4": lambda s: t_repro_ext(s, "table4"), "repro7": lambda s: t_repro_ext(s, "table7"),
+def _e(x: float) -> str:
+    """Energy to 3 significant digits at most, without decimals above 100."""
+    return f"{x:,.0f}" if abs(x) >= 100 else f"{x:.1f}"
+
+
+def t_energy(s):
+    E = s["partD"]["energy"]
+    k = E["twh_to_gwh_per_day"]
+    rows = []
+    for r in E["regions"]:
+        b = E["baseline_2025"][r]
+        rows.append([r, "2025", "–", _e(b["P50"]), f"{_e(b['P10'])} – {_e(b['P90'])}", _e(b["mean"]),
+                     f"{b['P50'] * k:,.0f}"])
+        for key, label in [("2028_matures", "2028 · matures"), ("2028_compounding", "2028 · compounding"),
+                           ("2030_matures", "2030 · matures"), ("2030_compounding", "2030 · compounding")]:
+            e, d = E["cases"][key][r]["E"], E["cases"][key][r]["dE"]
+            rows.append([r, label, _e(d["P50"]), _e(e["P50"]), f"{_e(e['P10'])} – {_e(e['P90'])}",
+                         _e(e["mean"]), f"{e['P50'] * k:,.0f}"])
+    return md_table(["region", "year · efficiency", "new energy ΔE median (TWh/yr)", "median (TWh/yr)",
+                     "P10 – P90 (TWh/yr)", "mean (TWh/yr)", "median (GWh/day)"], rows, "llrrrrr")
+
+
+TABLES = {"repro23": t_repro23, "energy": t_energy, "repro4": lambda s: t_repro_ext(s, "table4"), "repro7": lambda s: t_repro_ext(s, "table7"),
           "quantiles": t_quantiles, "capacity": t_capacity, "ladder": t_ladder, "lognormal": t_lognormal,
           "sobol": t_sobol, "sobol_lin": t_sobol_lin, "priors": t_priors, "cox": t_cox, "kappa": t_kappa,
           "halved": t_halved}

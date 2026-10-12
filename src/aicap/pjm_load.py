@@ -34,6 +34,9 @@ from .params import (ALTMAN_WH, CHATGPT_PROMPTS_PER_DAY, COST_RATIOS, DELIVERY_Y
 
 HOURS_PER_DAY = 24.0
 W_PER_GW = 1e9
+DAYS_PER_YEAR = 365.0
+TWH_TO_GWH_PER_DAY = 1e3 / DAYS_PER_YEAR  # TWh/yr -> average GWh/day
+REGIONS = ("global", "US", "PJM")
 
 # ---------------------------------------------------------------------------
 # Model pieces
@@ -108,15 +111,44 @@ def delta_q(th: dict, T: float, structure: str = "matures") -> dict:
     return {"dQ": PT - P0, "P0": P0, "PT": PT}
 
 
+def region_share(th: dict, region: str):
+    """Fraction of global AI load in the region (fixed shares: siting is not a decision here)."""
+    if region == "global":
+        return 1.0
+    if region == "US":
+        return th["s_US"]
+    if region == "PJM":
+        return th["s_US"] * th["s_PJM"]
+    raise ValueError(region)
+
+
+def energy_twh(th: dict, T: float | None = None, structure: str = "matures", region: str = "PJM"):
+    """Annualized AI electricity use, TWh/yr: daily energy x 365 (= average power x 8,760 h).
+
+    Inference for all providers plus training as (1 + tau) x inference, times the regional share.
+    No summer-peak factor kappa (energy, not peak). T=None gives 2025; otherwise the annualized
+    rate at year 2025 + T. Boundary: the per-query energies are as measured by the cited studies
+    (Google's 0.24 Wh already includes data-centre overhead), so this is close to facility energy,
+    not server (IT) energy."""
+    wh_day = th["N0"] * mean_wh_chat(th) * (1 + th["tau"]) * region_share(th, region)
+    if T is None:
+        wh_day = wh_day * mix_factor(th, "0")
+    else:
+        wh_day = wh_day * growth_factor(th, T) * mix_factor(th, "T") / efficiency_factor(th, T, structure)
+    return wh_day * DAYS_PER_YEAR / 1e12
+
+
 def simulate(n: int = N_DRAWS, seed: int = SEED, priors: dict | None = None) -> dict:
     """Common random numbers: one parameter draw serves both delivery years and both
-    efficiency structures. Returns {"theta": draws, (year, structure): {"dQ","P0","PT"}}."""
+    efficiency structures. Returns {"theta": draws, "E0": {region: TWh/yr in 2025},
+    (year, structure): {"dQ", "P0", "PT", "ET": {region: TWh/yr in that year}}}."""
     rng = np.random.default_rng(seed)
     th = sample_params(n, rng, priors)
-    out = {"theta": th, "n": n, "seed": seed}
+    out = {"theta": th, "n": n, "seed": seed, "E0": {r: energy_twh(th, None, region=r) for r in REGIONS}}
     for year, dy in DELIVERY_YEARS.items():
         for s in EFFICIENCY_STRUCTURES:
             out[(year, s)] = delta_q(th, dy["T"], s)
+            out[(year, s)]["ET"] = {r: energy_twh(th, dy["T"], s, r) for r in REGIONS}
     return out
 
 
@@ -126,21 +158,45 @@ def simulate(n: int = N_DRAWS, seed: int = SEED, priors: dict | None = None) -> 
 
 
 def quantile_table(x, probs=(0.10, 0.50, 0.90), n_boot: int = 200, seed: int = 0,
-                   threshold: float = PJM_DC_GROWTH_GW) -> dict:
-    """Quantiles with bootstrap SEs, mean with its SE, and P(x > threshold) with its SE."""
+                   threshold: float | None = PJM_DC_GROWTH_GW) -> dict:
+    """Quantiles with bootstrap SEs, mean with its SE, and P(x > threshold) with its SE.
+    n_boot=0 skips the bootstrap (SEs None); threshold=None skips the exceedance probability."""
     x = np.asarray(x, dtype=float)
     n = x.size
     rng = np.random.default_rng(seed)
     q = np.quantile(x, probs)
-    boot = np.empty((n_boot, len(probs)))
-    for b in range(n_boot):
-        boot[b] = np.quantile(x[rng.integers(0, n, n)], probs)
-    p_exc = float(np.mean(x > threshold))
     out = {f"P{round(100 * p)}": float(v) for p, v in zip(probs, q)}
-    out.update({f"P{round(100 * p)}_se": float(s) for p, s in zip(probs, boot.std(axis=0, ddof=1))})
+    if n_boot > 0:
+        boot = np.empty((n_boot, len(probs)))
+        for b in range(n_boot):
+            boot[b] = np.quantile(x[rng.integers(0, n, n)], probs)
+        out.update({f"P{round(100 * p)}_se": float(s) for p, s in zip(probs, boot.std(axis=0, ddof=1))})
+    else:
+        out.update({f"P{round(100 * p)}_se": None for p in probs})
     out.update(mean=float(x.mean()), mean_se=float(x.std(ddof=1) / np.sqrt(n)),
-               p_exceed=p_exc, p_exceed_se=float(np.sqrt(p_exc * (1 - p_exc) / n)),
-               threshold=threshold, p_negative=float(np.mean(x < 0)), n=n, n_boot=n_boot)
+               p_negative=float(np.mean(x < 0)), n=n, n_boot=n_boot, threshold=threshold)
+    if threshold is not None:
+        p_exc = float(np.mean(x > threshold))
+        out.update(p_exceed=p_exc, p_exceed_se=float(np.sqrt(p_exc * (1 - p_exc) / n)))
+    return out
+
+
+def energy_tables(sim: dict, n_boot: int = 50) -> dict:
+    """Quantiles of annualized energy (TWh/yr) for 2025 and each delivery year x structure x region,
+    and of the new energy dE = E_T - E_2025."""
+    probs = (0.10, 0.50, 0.90)
+    out = {"units": "TWh/yr (annualized: daily energy x 365); GWh/day = TWh/yr x 1000/365",
+           "twh_to_gwh_per_day": TWH_TO_GWH_PER_DAY, "regions": list(REGIONS),
+           "boundary": "approximately facility energy (per-query energies as measured by the cited studies)",
+           "baseline_2025": {r: quantile_table(sim["E0"][r], probs, n_boot, threshold=None) for r in REGIONS},
+           "cases": {}}
+    for year in DELIVERY_YEARS:
+        for s in EFFICIENCY_STRUCTURES:
+            ET = sim[(year, s)]["ET"]
+            out["cases"][f"{year}_{s}"] = {
+                r: {"E": quantile_table(ET[r], probs, n_boot, seed=year, threshold=None),
+                    "dE": quantile_table(ET[r] - sim["E0"][r], probs, n_boot, seed=year, threshold=None)}
+                for r in REGIONS}
     return out
 
 
@@ -348,7 +404,7 @@ def _jsonable(x):
     return x
 
 
-def summarize(sim: dict, n_boot: int = 200, verbose: bool = True) -> dict:
+def summarize(sim: dict, n_boot: int = 200, verbose: bool = True, energy_n_boot: int = 50) -> dict:
     """All Part D numbers for summary.json: quantiles with SEs, capacity, 30 GW position, cost of uncertainty,
     tail, lognormal checks, Fermi ladders, halved-uncertainty rerun, flexible load, per-type table."""
     t = time.time()
@@ -406,94 +462,179 @@ def summarize(sim: dict, n_boot: int = 200, verbose: bool = True) -> dict:
     out["per_type_at_medians"] = {k: {"median_Wh": Mc * m, "sigma": sc, "mean_Wh": Mc * m * np.exp(sc**2 / 2)}
                                   for k, m in types.items()}
     out["share_cap_binding_draws"] = int(np.sum(sim["theta"]["w_AT"] > 1 - sim["theta"]["w_RT"]))
+    out["energy"] = energy_tables(sim, energy_n_boot)
     if verbose:
         print(f"[D] PJM model summaries in {time.time() - t:.1f} s")
     return out
 
 
-def write_handoff(sim: dict, d: dict, info: dict, outdir=None) -> Path:
-    """Write the two sample CSVs, handoff_summary.json and README.md for presenter 3."""
-    HANDOFF = Path(outdir) if outdir else default_handoff_dir()
-    HANDOFF.mkdir(parents=True, exist_ok=True)
+def _handoff_dir(outdir=None) -> Path:
+    path = Path(outdir) if outdir else default_handoff_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _provenance(sim: dict, info: dict) -> str:
+    return (f"# seed={sim['seed']} n_draws={sim['n']} per efficiency structure; priors_version={PRIORS_VERSION}; "
+            f"date={info['timestamp']}; git={info['git_commit']}\n")
+
+
+def write_peak_csvs(sim: dict, info: dict, outdir=None) -> list[Path]:
+    """dQ_samples_DY{year}.csv: new PJM summer-peak load (GW), both efficiency structures."""
+    out, paths = _handoff_dir(outdir), []
     for year, dy in DELIVERY_YEARS.items():
         frames = []
         for s in EFFICIENCY_STRUCTURES:
             r = sim[(year, s)]
             frames.append(pd.DataFrame({"draw_id": np.arange(sim["n"]), "dQ_GW": r["dQ"], "P0_GW": r["P0"],
                                         "PT_GW": r["PT"], "efficiency_structure": s}))
-        df = pd.concat(frames, ignore_index=True)
-        path = HANDOFF / f"dQ_samples_DY{year}.csv"
+        path = out / f"dQ_samples_DY{year}.csv"
         header = (f"# AI new PJM summer-peak load samples, delivery year {dy['label']} (T = {dy['T']} years from 2025)\n"
-                  f"# seed={sim['seed']} n_draws={sim['n']} per efficiency structure; priors_version={PRIORS_VERSION}; "
-                  f"date={info['timestamp']}; git={info['git_commit']}\n"
-                  "# units: GW. dQ_GW = PT_GW - P0_GW (can be negative). Same draw_id = same parameter draw in both "
-                  "efficiency structures and both delivery-year files.\n"
+                  + _provenance(sim, info) +
+                  "# units: GW of summer-peak load in PJM. dQ_GW = PT_GW - P0_GW (can be negative). Same draw_id = "
+                  "same parameter draw in every handoff file.\n"
                   "# efficiency_structure: matures (default) or compounding. See outputs/handoff/README.md.\n")
         with open(path, "w") as f:
             f.write(header)
-            df.to_csv(f, index=False, float_format="%.6g")
-    hs = {"run": info, "units": "GW", "n_draws": sim["n"], "seed": sim["seed"], "priors_version": PRIORS_VERSION,
-          "delivery_years": DELIVERY_YEARS, "quantiles": d["quantiles"], "quantile_capacity": d["quantile_capacity"],
-          "pjm_30GW": d["pjm_30GW"], "cost_of_uncertainty": d["cost_of_uncertainty"], "tail": d["tail"],
-          "P0_2025": d["P0"]}
-    (HANDOFF / "handoff_summary.json").write_text(json.dumps(_jsonable(hs), indent=2))
+            pd.concat(frames, ignore_index=True).to_csv(f, index=False, float_format="%.6g")
+        paths.append(path)
+    return paths
+
+
+def write_energy_csvs(sim: dict, info: dict, outdir=None) -> list[Path]:
+    """energy_samples_{year}.csv: annualized AI electricity use (TWh/yr) in 2025 and in the delivery
+    year, globally, in the US and in PJM (for the water footprint)."""
+    out, paths = _handoff_dir(outdir), []
+    for year, dy in DELIVERY_YEARS.items():
+        frames = []
+        for s in EFFICIENCY_STRUCTURES:
+            cols = {"draw_id": np.arange(sim["n"]), "efficiency_structure": s}
+            for r in REGIONS:
+                cols[f"E2025_TWh_{r}"] = sim["E0"][r]
+                cols[f"E{year}_TWh_{r}"] = sim[(year, s)]["ET"][r]
+            frames.append(pd.DataFrame(cols))
+        path = out / f"energy_samples_{year}.csv"
+        header = (f"# Annualized AI electricity use, 2025 and {year} (T = {dy['T']} years from 2025)\n"
+                  + _provenance(sim, info) +
+                  "# units: TWh per year (daily energy x 365); GWh/day = TWh/yr x 1000/365. Inference for all "
+                  "providers + training (1 + tau); US = x s_US, PJM = x s_US s_PJM; no summer-peak factor.\n"
+                  "# boundary: approximately FACILITY energy (Google's 0.24 Wh/query includes data-centre overhead); "
+                  "server (IT) energy = facility / PUE. Same draw_id = same parameter draw in every handoff file.\n")
+        with open(path, "w") as f:
+            f.write(header)
+            pd.concat(frames, ignore_index=True).to_csv(f, index=False, float_format="%.6g")
+        paths.append(path)
+    return paths
+
+
+def handoff_readme(sim: dict, d: dict, info: dict) -> str:
+    """README.md for the handoff folder, with the key numbers filled in."""
     q = d["quantiles"]["2030_matures"]
     t = d["tail"]["2030_matures"]
-    readme = f"""# Handoff to presenter 3: new PJM summer-peak load from AI (ΔQ)
+    E = d["energy"]
+    g = TWH_TO_GWH_PER_DAY
+    erows = []
+    for r in REGIONS:
+        b, e = E["baseline_2025"][r], E["cases"]["2030_matures"][r]["E"]
+        erows.append(f"| {r} | {b['P50']:.1f} ({b['P50'] * g:.0f}) | {e['P10']:.0f} | {e['P50']:.0f} ({e['P50'] * g:.0f}) "
+                     f"| {e['P90']:.0f} ({e['P90'] * g:,.0f}) | {e['mean']:.0f} |")
+    erows = "\n".join(erows)
+    pjm_c = E["cases"]["2030_compounding"]["PJM"]["E"]
+    return f"""# Handoff: AI electricity use and new PJM peak load (samples)
 
 Generated by `scripts/run_all.py` on {info['timestamp']} (git {info['git_commit']}).
-Seed {sim['seed']}, {sim['n']:,} draws per efficiency structure, priors version {PRIORS_VERSION}.
+Seed {sim['seed']}, {sim['n']:,} parameter draws per efficiency structure, priors version {PRIORS_VERSION}.
 
 ## Files
 
-| File | Content |
-|---|---|
-| `dQ_samples_DY2028.csv` | Delivery year 2028/29 (summer 2028, T = 3 years from 2025) |
-| `dQ_samples_DY2030.csv` | Delivery year 2030/31 (summer 2030, T = 5) |
-| `handoff_summary.json` | Quantile tables with Monte Carlo standard errors, quantile capacity, tail statistics |
+| File | For | Content |
+|---|---|---|
+| `energy_samples_2028.csv`, `energy_samples_2030.csv` | **Presenter 3 (water footprint)** | Annualized AI electricity use (TWh/yr) in 2025 and in 2028 or 2030: global, US, PJM |
+| `dQ_samples_DY2028.csv`, `dQ_samples_DY2030.csv` | Anyone working with peak load or prices (capacity prices, bills) | New PJM summer-peak load ΔQ (GW) for delivery years 2028/29 and 2030/31 |
+| `handoff_summary.json` | Everyone | Quantile tables with Monte Carlo standard errors |
 
-CSV columns: `draw_id, dQ_GW, P0_GW, PT_GW, efficiency_structure`. Lines starting with `#` are comments
-(`pandas.read_csv(path, comment="#")`). Each file has {2 * sim['n']:,} rows: the same {sim['n']:,} parameter draws under
-both efficiency structures (`matures` = default, `compounding`). Rows with the same `draw_id` share every
-parameter, in both files, so you can pair them.
+Lines starting with `#` are comments (`pandas.read_csv(path, comment="#")`). Every file holds the same
+{sim['n']:,} parameter draws under both efficiency structures (`matures` = default, `compounding`):
+rows with the same `draw_id` share every parameter **across all four CSVs**, so energy and peak load can be paired.
 
-## Units and what ΔQ includes
+## Energy files (for the water footprint)
 
-- All values are **GW of summer-peak load inside PJM**: average power (Wh/day ÷ 24 h) times a
-  summer-peak coincidence factor κ.
-- `P0_GW`: AI load in 2025. `PT_GW`: AI load in the delivery year. `dQ_GW = PT_GW − P0_GW`, the **new**
-  load; it can be negative (efficiency outruns growth), and the sign is kept.
-- Included: inference for all providers worldwide (requests/day × mean Wh per request, including the
-  reasoning/agentic mix and fleet overhead β), training as a multiple (1 + τ) of inference, the US share
-  and PJM's share of US data-centre load, and κ. Per-query energy follows the cited measurements, whose
-  boundaries differ (Google's 0.24 Wh already includes idle capacity and data-centre overhead).
-- **AI only.** PJM's "up to ~30 GW" figure covers all data-centre growth 2025–2030, not AI alone.
+Columns: `draw_id, efficiency_structure, E2025_TWh_global, E{{year}}_TWh_global, E2025_TWh_US, E{{year}}_TWh_US,
+E2025_TWh_PJM, E{{year}}_TWh_PJM`.
 
-## Key numbers, DY 2030/31, default efficiency (GW)
+- **Units:** TWh per year, annualized (daily energy × 365, i.e. average power × 8,760 h).
+  GWh/day = TWh/yr × 1000/365.
+- **Included:** inference for all providers (requests/day × mean Wh per request, with the reasoning/agentic
+  mix and fleet overhead β) plus training as (1 + τ) × inference. US = global × s_US; PJM = global × s_US × s_PJM.
+  No summer-peak factor (that is only in the peak-load files).
+- **Energy boundary: approximately facility energy.** The per-query energies follow the cited
+  measurements, and Google's 0.24 Wh already includes data-centre overhead and idle machines.
+  Li et al.'s operational water footprint (arXiv:2304.03271 v5, §3.1) is
+  Water = Σₜ eₜ·[ρ_s1,t + θₜ·ρ_s2,t], with eₜ the **server** energy, ρ_s1 the on-site WUE, θ the PUE and
+  ρ_s2 the off-site EWIF. With facility energy F = θ·e this becomes **Water = F·(ρ_s1/θ + ρ_s2)**:
+  divide by PUE in the on-site term only, or PUE is counted twice. Li et al.'s Table 1 lists PUEs of
+  1.11–1.43 by location (U.S. average 1.17; Virginia, inside PJM, 1.14).
+
+2030 (default efficiency), TWh/yr (GWh/day in parentheses):
+
+| Region | 2025 median | 2030 P10 | 2030 median | 2030 P90 | 2030 mean |
+|---|---|---|---|---|---|
+{erows}
+
+Under compounding efficiency the 2030 PJM median is {pjm_c['P50']:.0f} TWh/yr.
+
+### Why samples and not one number
+
+Water is linear in energy for fixed intensities, so **expected** water needs only expected energy. A
+**water budget** is a threshold, though: the probability of exceeding it (and any nonlinear cost of
+scarcity) depends on the whole distribution. This is the same quantile logic as capacity: if a budget
+must hold with probability 1 − α, plan for the (1 − α) quantile of water use, not its median.
+
+## Peak-load files
+
+Columns: `draw_id, dQ_GW, P0_GW, PT_GW, efficiency_structure`. All values are **GW of summer-peak load inside
+PJM** (average power × a summer-peak coincidence factor κ). `P0_GW`: 2025; `PT_GW`: delivery year;
+`dQ_GW = PT_GW − P0_GW` (can be negative; the sign is kept). AI only: PJM's "up to ~30 GW" covers all
+data-centre growth 2025–2030.
+
+DY 2030/31, default efficiency (GW):
 
 | P10 | P50 | P90 | P95 | mean | P(ΔQ > 30 GW) |
 |---|---|---|---|---|---|
 | {q['P10']:.2f} | {q['P50']:.2f} | {q['P90']:.1f} | {q['P95']:.1f} | {q['mean']:.1f} | {q['p_exceed']:.3f} |
 
-## How to use the samples (Jensen)
+For prices or bills: push **every sample** through the price function and average. For a convex price
+curve p, E[p(ΔQ)] ≥ p(E[ΔQ]) (Jensen), so plugging in the mean or median understates the expected impact.
 
-Push **every sample** through your price function p(ΔQ) and average the results. For a convex p,
-E[p(ΔQ)] ≥ p(E[ΔQ]) (Jensen's inequality), so plugging in the mean or the median understates the
-expected price impact. The gap between the two is the price of uncertainty itself.
+## Caveats (both kinds of files)
 
-## Caveats you need before you use the tail
-
-- The upper tail comes from multiplying independent, wide lognormal priors and is not physical:
-  P99 = {t['P99']:.0f} GW, P99.9 = {t['P999']:.0f} GW, and the largest draw is {t['max']:,.0f} GW, while PJM's whole forecast
-  summer peak for 2026 is about {PJM_SUMMER_PEAK_2026_GW:.0f} GW ({100 * t['p_exceed_pjm_peak']:.1f}% of draws exceed it).
-  The **mean is pulled up by this tail**; quantiles up to P95 are robust.
-- With a steep (convex) price curve, E[p(ΔQ)] will be dominated by those draws. Report results with and
-  without a physical cap (for example, truncate or winsorize ΔQ at a level you can defend), and quote
-  quantiles of p(ΔQ) as well as its mean.
+- **The upper tail is not physical.** It comes from multiplying independent, wide lognormal priors. For
+  ΔQ in 2030/31: P99 = {t['P99']:.0f} GW, P99.9 = {t['P999']:.0f} GW, largest draw {t['max']:,.0f} GW, while PJM's whole
+  forecast summer peak for 2026 is about {PJM_SUMMER_PEAK_2026_GW:.0f} GW ({100 * t['p_exceed_pjm_peak']:.1f}% of draws exceed it).
+  The energy files share these draws. **Means are pulled up by this tail; quantiles up to P95 are robust.**
+  Cap or winsorize at a level you can defend before averaging a nonlinear function.
+- Energy is annualized from the level reached in the given year; seasonal variation (which raises
+  on-site WUE in summer) is not modelled.
+- Regional totals use fixed shares (s_US, s_PJM); where computing runs is not a decision in this model.
 - Priors are judgment-based and independent; presenter 1's per-query numbers are still placeholders.
 """
-    (HANDOFF / "README.md").write_text(readme)
-    return HANDOFF
+
+
+def write_handoff(sim: dict, d: dict, info: dict, outdir=None, csv: bool = True) -> Path:
+    """Write the sample CSVs (energy and peak load), handoff_summary.json and README.md."""
+    out = _handoff_dir(outdir)
+    if csv:
+        write_energy_csvs(sim, info, out)
+        write_peak_csvs(sim, info, out)
+    hs = {"run": info, "n_draws": sim["n"], "seed": sim["seed"], "priors_version": PRIORS_VERSION,
+          "delivery_years": DELIVERY_YEARS,
+          "energy": d["energy"],
+          "peak_load_GW": {"quantiles": d["quantiles"], "quantile_capacity": d["quantile_capacity"],
+                           "pjm_30GW": d["pjm_30GW"], "cost_of_uncertainty": d["cost_of_uncertainty"],
+                           "tail": d["tail"], "P0_2025": d["P0"]}}
+    (out / "handoff_summary.json").write_text(json.dumps(_jsonable(hs), indent=2))
+    (out / "README.md").write_text(handoff_readme(sim, d, info))
+    return out
 
 
 

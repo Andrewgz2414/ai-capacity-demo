@@ -1,27 +1,28 @@
 # Guide: AI load, parameter uncertainty and capacity sizing
 
-> **Run:** 2026-10-11T18:46:42-04:00 · **git commit:** `f8bfb71` · rendered from `docs/GUIDE_TEMPLATE.md` by `scripts/build_guide.py`.
+> **Run:** 2026-10-12T12:52:57-04:00 · **git commit:** `5f9617d` · rendered from `docs/GUIDE_TEMPLATE.md` by `scripts/build_guide.py`.
 > Every number below is read from `outputs/summary.json` (or quoted from a cited source, with the citation next to it). Presenter 1's per-query numbers: **placeholder (spec section 6 values); replace with presenter 1's hand-over**.
 
 ---
 
 ## 1. Overview
 
-**Question.** How much new summer-peak load will AI add to PJM by delivery years 2028/29 and 2030/31, and how much capacity should be bought for it when the forecast itself is uncertain?
+**Question.** How much new summer-peak load and electricity use will AI add to PJM by 2028 and 2030, and how much capacity should be planned for when the forecast itself is uncertain?
 
-**Answer.** At ~10¹⁰ queries a day the randomness of individual queries averages out completely, so what is left is uncertainty about volume, query mix and efficiency, and it is large. New PJM peak load for 2030/31 has a median of 5.4 GW but a P90 of 34.1 GW. Because rate uncertainty dominates, Bassamboo et al.'s result applies: the capacity to buy is a **quantile** of that distribution set by a cost ratio (a newsvendor rule), not the median plus a square-root safety margin.
+**Answer.** At ~10¹⁰ queries a day the randomness of individual queries averages out completely, so what is left is uncertainty about volume, query mix and efficiency, and it is large. New PJM peak load for 2030/31 has a median of 5.4 GW but a P90 of 34.1 GW. Because rate uncertainty dominates, Bassamboo et al.'s result applies: the capacity to buy is a **quantile** of that distribution set by a cost ratio (a newsvendor rule), not the median plus a square-root safety margin. The same draws give AI's electricity use (PJM median 46 TWh/yr in 2030, P90 270), which presenter 3 turns into water.
 
 ```mermaid
 flowchart LR
     P1["Presenter 1<br/>Wh per query<br/>lognormal M, σ"] --> COX["Cox model<br/>CV² = e^σ²/n̄ + CV²rate<br/>regime test: CV vs 1/√E"]
     PAPER["Bassamboo et al. 2010<br/>newsvendor vs √E staffing"] --> COX
-    COX --> DQ["PJM ΔQ distribution<br/>200,000 epistemic draws"]
+    COX --> DQ["AI energy (TWh/yr) and PJM ΔQ (GW)<br/>200,000 epistemic draws"]
     DQ --> QC["Quantile capacity<br/>P(ΔQ > Q) = c_cap / c_short"]
-    DQ --> P3["Presenter 3<br/>price p(ΔQ), Jensen"]
-    QC --> P3
+    DQ --> P3["Presenter 3: water<br/>energy × (on-site WUE + PUE × off-site EWIF)<br/>where to run: budgeted scheduling"]
+    QC -. same quantile logic for a water budget .-> P3
+    DQ --> PX["Peak-load or price users<br/>push every sample through p(ΔQ)"]
 ```
 
-The demo has four parts, one figure each: **A** reproduce the paper's §4 (Fig. 1); **B** map where the newsvendor rule beats square-root staffing (Fig. 2); **C** show that AI queries form a Cox process whose per-query noise vanishes at grid scale (Fig. 3); **D** build the distribution of new PJM peak load ΔQ, read capacity as a quantile, and hand the samples to presenter 3 (Fig. 4).
+The demo has four parts, one figure each: **A** reproduce the paper's §4 (Fig. 1); **B** map where the newsvendor rule beats square-root staffing (Fig. 2); **C** show that AI queries form a Cox process whose per-query noise vanishes at grid scale (Fig. 3); **D** build the distributions of new PJM peak load ΔQ and of AI electricity use, read capacity as a quantile (Fig. 4), and hand the energy samples to presenter 3, who turns them into water.
 
 ---
 
@@ -44,11 +45,13 @@ The demo has four parts, one figure each: **A** reproduce the paper's §4 (Fig. 
 | 13 | Rao–Blackwellization (conditional Monte Carlo) | E[E[S\|θ]] = E S, Var E[S\|θ] = Var S − E Var(S\|θ) ≤ Var S | `pjm_load.py` (uses E[S\|θ]); `cox.py::rao_blackwell_demo` | Lets the grid model skip the ~10¹⁰-query inner loop | Standard | `test_rao_blackwell_keeps_mean_and_lowers_variance` |
 | 14 | Gompertz growth vs geometric Brownian motion; volume vs efficiency | ln G_T = ln g₁ (1 − e^{−λT})/λ (bounded: G_∞ = g₁^{1/λ}); GBM: ln G_T ~ N(μT, s²T) | `pjm_load.py::gompertz`, `growth_factor`, `efficiency_factor` · cell 5 | Volume growth and efficiency race; the toggle changes the winner | Spec §6 (two-point fit to Google token growth) | `test_fermi_ladder_matches_prototype` |
 | 15 | Fenton–Wilkinson lognormal approximation | Σ lognormals ≈ lognormal with s² = ln(1 + v/m²), μ = ln m − s²/2 | `pjm_load.py::log_moments`, `lognormal_check` | Cross-check of the Monte Carlo | Fenton 1960 | §4.5: FW vs exact log-moments vs MC; `test_lognormal_approximation_with_exact_mix_moments` |
-| 16 | Jensen's inequality | p convex ⇒ E[p(ΔQ)] ≥ p(E ΔQ) | Handoff README · cell 6 | Why presenter 3 needs samples, not a number | Standard | `test_jensen_gap_for_a_convex_price_curve` |
-| 17 | Electricity units, peak vs average, coincidence, PUE | P[GW] = N[/day] · e[Wh] / 24 h / 10⁹; peak = average × κ; PUE = facility/IT energy | `pjm_load.py::to_gw`, `scope_factor` · cell 5 | Turning Wh per query into GW of peak load | Spec §6; Elsworth et al. 2025 (PUE included in 0.24 Wh) | `test_units_hand_calculation` (35.4 MW) |
+| 16 | Jensen's inequality; why the handoff is a distribution | p convex ⇒ E[p(X)] ≥ p(E X); p linear ⇒ equality | Handoff README · cell 6 | Linear consequences (water = intensity × energy) need only the mean; budgets and convex prices need the distribution | Standard | `test_jensen_gap_for_a_convex_price_curve` |
+| 17 | Electricity units, energy vs power, peak vs average, coincidence, PUE | P[GW] = N[/day] · e[Wh] / 24 h / 10⁹; E[TWh/yr] = P_avg[GW] × 8.76; peak = average × κ; PUE = facility/IT energy | `pjm_load.py::to_gw`, `energy_twh`, `scope_factor` · cells 5–6 | Turning Wh per query into GW of peak load and TWh of energy | Spec §6; Elsworth et al. 2025 (PUE included in 0.24 Wh) | `test_units_hand_calculation` (35.4 MW), `test_energy_units_hand_calculation`, `test_energy_consistent_with_peak_load_and_regions` |
 | 18 | PJM capacity market basics | Delivery year June–May; capacity bought ahead from the load forecast; firm vs non-firm large loads | `params.py::DELIVERY_YEARS`, `PJM_DC_GROWTH_GW` · cells 5–6 | Sets the horizon T and the 30 GW yardstick | PJM LAS (24 Nov 2025); PJM 2026 Load Forecast Report (as cited in spec §12) | — (definitions) |
 | 19 | Newsvendor reading of grid capacity (**analogy**) | min c_cap·Q + c_short·E(ΔQ − Q)⁺ ⇒ P(ΔQ > Q) = c_cap/c_short | `pjm_load.py::quantile_capacity`, `position_of` · cell 5, Fig. 4 | Turns the ΔQ distribution into a capacity decision | Bassamboo et al. 2010 eq. (3) by analogy | `test_quantile_capacity_is_the_fractile` |
 | 20 | Sobol indices | Sᵢ = Var E[Y\|Xᵢ]/Var Y; additive independent Y ⇒ Sᵢ = Var gᵢ/Var Y; product of lognormals ⇒ Sᵢ = (e^{sᵢ²}−1)/(e^{S²}−1) | `scripts/run_all.py::sobol_part` | Which uncertainties drive ΔQ | Sobol' 2001; Saltelli et al. 2010 | SALib vs closed form within 5.2×10⁻⁴ |
+| 21 | Static vs dynamic decisions under uncertainty (the bridge to presenter 3) | Plan before Λ is known ⇒ a quantile (newsvendor); operate after demand arrives ⇒ online control that keeps a long-run budget (virtual queue, Lyapunov drift) | Notebook cell 6; handoff README | Connects capacity planning to water-aware scheduling | Bassamboo et al. 2010 §7(a), pp.21–22; presenter 3's references | — (concept) |
+| 22 | Operational water footprint and the energy boundary | Water = Σₜ eₜ[ρ_s1,t + θₜρ_s2,t] (e = server energy); with facility energy F = θe: Water = F(ρ_s1/θ + ρ_s2) | `pjm_load.py::energy_twh`, `write_energy_csvs` · cell 6 | What presenter 3 needs from us (energy, at an agreed boundary) | Li et al. 2025 §3.1 p.4 | Formula checked in the paper; boundary stated in the handoff |
 
 ### 2.1 Poisson process; superposition and thinning
 A Poisson process with rate λ has independent increments and N(t) ~ Poisson(λt). Its probability generating function is E z^{N(t)} = exp(λt(z − 1)). **Superposition:** for independent processes with rates λ₁, …, λ_k the product of generating functions is exp((Σλᵢ)t(z − 1)), so the merged stream is Poisson with rate Σλᵢ. **Thinning:** if each arrival is independently of type j with probability pⱼ, the type-j counts are independent Poisson processes with rates pⱼλ. Superposition is why requests from millions of independent users form one Poisson stream; thinning is why splitting that stream into chat, reasoning and agentic requests keeps each part Poisson, and why the energy per request of the mixed stream is the weighted average `mix_t = (1 − w_R − w_A) + w_R·r + w_A·a` (in chat units).
@@ -103,19 +106,33 @@ Gompertz: the log growth rate starts at ln g₁ per year and decays at rate λ, 
 Fenton (1960) approximates a sum of lognormals by one lognormal with the same mean m and variance v: s² = ln(1 + v/m²), μ = ln m − s²/2. We use it for the mix sum, multiply the independent factors on the log scale, and compare the resulting lognormal for P_T with the Monte Carlo. FW matches the **linear** mean and variance, which the heavy-tailed agentic term (log-sd of w_A·a ≈ 1.36) dominates, so it overstates Var ln(mix): for 2030/31 the approximation is off by −43% at P10, −16% at P50 and +1% at P90. Replacing FW by the exact log-moments of the mix (4-D Gauss quadrature) brings every quantile within 5.7%, so ln P_T is close to normal and the factor decomposition is right (table in §4.5).
 
 ### 2.16 Jensen's inequality and why the handoff is a distribution
-For convex p, E[p(X)] ≥ p(E X), with a gap that grows with the spread of X. Presenter 3's capacity price rises convexly with new load where the supply curve is steep. So the expected price impact is larger than the price evaluated at the expected load, and much larger than at the median load. A single "ΔQ = x GW" number would understate the expected cost, and the size of that understatement is the price of uncertainty itself. That is why the handoff is 200,000 samples per case, and why presenter 3 should push every sample through p (`test_jensen_gap_for_a_convex_price_curve` checks this on our samples with a convex price curve). The tail caveat in §5 matters here.
+For convex p, E[p(X)] ≥ p(E X), with a gap that grows with the spread of X; for linear p the two are equal. Which case applies decides what downstream users need:
+- **Water (presenter 3)** is linear in energy for fixed intensities (§2.22), so *expected* water needs only expected energy. But a water **budget** is a threshold: the probability of exceeding it, P(W > budget), depends on the whole distribution, and the same quantile logic as capacity applies. If the budget must hold with probability 1 − α, plan for the (1 − α) quantile of water use, not the median.
+- **Prices and bills.** A capacity price rises convexly with new load where supply is steep, so the expected price impact exceeds the price at the expected (and even more at the median) load. Anyone pricing ΔQ must push every sample through p (`test_jensen_gap_for_a_convex_price_curve` checks this on our samples with a convex price curve).
+
+That is why the handoff is 200,000 paired samples per case, not a single number. The tail caveat in §5 matters for both uses.
 
 ### 2.17 Electricity units and power concepts
-Energy (Wh) is power (W) × time. Average power = energy per day ÷ 24 h, so P[GW] = N[queries/day] × e[Wh/query] ÷ 24 h ÷ 10⁹ W/GW. Hand check: 2.5×10⁹ prompts/day × 0.34 Wh ÷ 24 h = 35.4 MW (`test_units_hand_calculation`). Capacity markets care about the **peak**, so average load is multiplied by a summer-peak coincidence factor κ = 1.0–1.3 (spec §6: Oviedo et al. S5 gives 1.235; PJM's flat 70% utilization corresponds to about 1.0). **PUE** (power usage effectiveness) is total facility energy divided by IT energy. Google's 0.24 Wh median already includes data-centre overhead and idle machines (Elsworth et al. 2025, abstract, re-checked from the PDF in this build), so when M_c leans on that number the fleet-overhead factor β should be near its lower end of 1.0.
+Energy (Wh) is power (W) × time. Average power = energy per day ÷ 24 h, so P[GW] = N[queries/day] × e[Wh/query] ÷ 24 h ÷ 10⁹ W/GW. Hand check: 2.5×10⁹ prompts/day × 0.34 Wh ÷ 24 h = 35.4 MW (`test_units_hand_calculation`). **Energy** over a year is average power × 8,760 h: 1 GW of average load is 8.76 TWh/yr, or 24 GWh/day. Water and emissions scale with energy; capacity markets scale with the peak. Capacity markets care about the **peak**, so average load is multiplied by a summer-peak coincidence factor κ = 1.0–1.3 (spec §6: Oviedo et al. S5 gives 1.235; PJM's flat 70% utilization corresponds to about 1.0). **PUE** (power usage effectiveness) is total facility energy divided by IT energy. Google's 0.24 Wh median already includes data-centre overhead and idle machines (Elsworth et al. 2025, abstract, re-checked from the PDF in this build), so when M_c leans on that number the fleet-overhead factor β should be near its lower end of 1.0.
 
 ### 2.18 PJM capacity market basics
-PJM delivery years run June to May; capacity for a delivery year is procured ahead of time on the basis of PJM's load forecast, which is why our horizon is summer 2028 for DY 2028/29 (T = 3) and summer 2030 for DY 2030/31 (T = 5). Large data-centre loads are classed as firm or non-firm (curtailable). Numbers as cited in the spec (§12; documents checked by the author, not re-opened in this build): PJM hosts about 40% of US data centres in 2025, its load-adjustment process supports up to ~30 GW of data-centre growth 2025–2030 with minimum 36-month ramps, and non-firm load counts as zero before 2030 and half from 2030 in most zones (PJM Load Analysis Subcommittee, 24 Nov 2025). The 2026 Load Forecast Report gives a 2036 summer peak of 222,106 MW, +65,733 MW over ten years, so the 2026 forecast peak is about 156 GW. Presenter 3 models how the clearing price responds to new load.
+PJM delivery years run June to May; capacity for a delivery year is procured ahead of time on the basis of PJM's load forecast, which is why our horizon is summer 2028 for DY 2028/29 (T = 3) and summer 2030 for DY 2030/31 (T = 5). Large data-centre loads are classed as firm or non-firm (curtailable). Numbers as cited in the spec (§12; documents checked by the author, not re-opened in this build): PJM hosts about 40% of US data centres in 2025, its load-adjustment process supports up to ~30 GW of data-centre growth 2025–2030 with minimum 36-month ramps, and non-firm load counts as zero before 2030 and half from 2030 in most zones (PJM Load Analysis Subcommittee, 24 Nov 2025). The 2026 Load Forecast Report gives a 2036 summer peak of 222,106 MW, +65,733 MW over ten years, so the 2026 forecast peak is about 156 GW. A price model for new load, if the group keeps one, would take the ΔQ samples (§2.16).
 
 ### 2.19 The newsvendor reading of grid capacity (an analogy)
 If each GW of capacity costs c_cap and each GW of unmet peak load costs c_short, then choosing Q to minimize c_cap·Q + c_short·E[(ΔQ − Q)⁺] gives, exactly as in §2.9, P(ΔQ > Q) = c_cap/c_short: **capacity is a quantile of ΔQ**. With a cost ratio of 0.10 that is P90 = 34.1 GW for 2030/31, against a median of 5.4 GW. This is an **analogy, not PJM's method**: PJM procures against a sloped demand curve and a reliability requirement, not a single cost ratio. What carries over is the logic: when uncertainty about the rate dominates, the hedge must be sized to that uncertainty, not to √E. Read backwards, PJM's ~30 GW sits at the 88.4% quantile of our ΔQ (implied ratio 0.116). That 30 GW covers **all** data-centre growth, not AI alone, so the comparison is indicative only.
 
 ### 2.20 Sobol indices
-For Y = f(X₁, …, X_k) with independent inputs, the first-order index Sᵢ = Var(E[Y|Xᵢ])/Var Y is the share of variance explained by Xᵢ alone, and the total index S_Tᵢ = E[Var(Y|X₋ᵢ)]/Var Y includes all its interactions. If Y = Σ gᵢ(Xᵢ) is additive, Sᵢ = Var gᵢ/Var Y and the Sᵢ sum to 1. ln P_T is a sum of independent group log-factors except that growth and (maturing) efficiency share λ, which leaves a small interaction (0.994 explained by first-order terms). We estimate the indices with SALib (Saltelli 2010 design, 147,456 model runs per structure) on parameter groups, and compare with the closed form computed from exact log-variances: the largest difference is 5.2×10⁻⁴. On the linear scale a product of independent lognormals has Sᵢ = (e^{sᵢ²} − 1)/(e^{S²} − 1); our group factors are only approximately lognormal, and agreement there is rough (§4.6).
+For Y = f(X₁, …, X_k) with independent inputs, the first-order index Sᵢ = Var(E[Y|Xᵢ])/Var Y is the share of variance explained by Xᵢ alone, and the total index S_Tᵢ = E[Var(Y|X₋ᵢ)]/Var Y includes all its interactions. If Y = Σ gᵢ(Xᵢ) is additive, Sᵢ = Var gᵢ/Var Y and the Sᵢ sum to 1. ln P_T is a sum of independent group log-factors except that growth and (maturing) efficiency share λ, which leaves a small interaction (0.994 explained by first-order terms). We estimate the indices with SALib (Saltelli 2010 design, 147,456 model runs per structure) on parameter groups, and compare with the closed form computed from exact log-variances: the largest difference is 5.2×10⁻⁴. On the linear scale a product of independent lognormals has Sᵢ = (e^{sᵢ²} − 1)/(e^{S²} − 1); our group factors are only approximately lognormal, and agreement there is rough (§4.7).
+
+### 2.21 Static vs dynamic decisions under uncertainty (the bridge to presenter 3)
+Bassamboo et al.'s capacity b is chosen **before** the rate Λ is revealed: a static decision whose answer is a quantile of Λ (§2.9). The paper's own discussion points to the dynamic side as follow-up work: a quasi-static routing policy paired with the newsvendor capacity is nearly optimal in the uncertainty-dominated regime (§7(a), pp.21–22). Presenter 3's second reference (Islam et al. 2017, *Water-constrained geographic load balancing in data centers*, as she describes it; not opened in this build) takes that dynamic side for water: a cost-minimization problem with a long-run water budget, turned into an online scheduling rule (WATCH) by a virtual water-deficit queue and a Lyapunov drift argument. The two views fit together:
+- **Plan** (this demo): size capacity so that a constraint holds with high probability, so the answer is a quantile of the uncertain demand.
+- **Operate** (presenter 3): once demand arrives, route work across locations so that a budget holds on average, so the answer is a control rule.
+
+Siting is the hinge. Here the US and PJM shares are uncertain *parameters* (s_US, s_PJM); in presenter 3's model, where computing runs is the *decision*. Bridge sentence: *"I've shown how much to plan for before we know the demand. Presenter 3 shows what each of those kilowatt-hours costs in water, and how choosing where the computing runs keeps that within a budget."*
+
+### 2.22 Operational water footprint and the energy boundary
+Li et al. (2025, §3.1, p.4) write the operational water footprint of an AI workload over time slots t as Water = Σₜ eₜ·[ρ_s1,t + θₜ·ρ_s2,t]. Here eₜ is **server** energy, ρ_s1 the on-site water usage effectiveness (litres evaporated for cooling per kWh of server energy, higher in hot weather), θ the PUE, and ρ_s2 the off-site electricity water intensity factor (EWIF, litres per kWh generated, set by the grid's fuel mix). Our energies are close to **facility** energy F = θe, because the per-query measurements include overhead (Google's 0.24 Wh does). Substituting gives Water = F·(ρ_s1/θ + ρ_s2): divide by PUE in the on-site term only, or PUE is counted twice. Their Table 1 lists PUE 1.17, on-site WUE 0.55 L/kWh and off-site EWIF 3.142 L/kWh for the U.S. average, and 1.14, 0.14 and 2.385 for Virginia (inside PJM). Computing water is presenter 3's part; this demo supplies the energy distribution and states its boundary.
 
 ---
 
@@ -137,6 +154,7 @@ Distilled from `WORKLOG.md` (timestamps and problems are there).
 | 10 | Sensitivity (optional) | SALib Sobol on ln P_T by parameter group; closed-form check | — | `summary.json` → `sobol` | S₁: growth 0.31, mix 0.31, base volume 0.18 | SALib vs closed form ≤ 5.2×10⁻⁴ | Log scale is the reliable one |
 | 11 | Notebook | 6 storyboard cells; live efficiency toggle | caches | `notebooks/demo.ipynb` | Runs top to bottom in seconds | nbconvert + error scan | Display errors do not fail cells, so the test scans outputs |
 | 12 | Documentation | This guide (rendered from `summary.json`), references, README | `summary.json` | `docs/`, `README.md` | — | unresolved placeholders are an error | Numbers only through placeholders |
+| 13 | Presenter 3 moved to water | Added annualized energy (global, US, PJM; TWh/yr, no peak factor) to the model, summary and handoff; rewrote the bridge (notebook §6, handoff README, this guide) | Li et al. 2025 §3.1 (water formula) | `outputs/handoff/energy_samples_*.csv`, `README.md`, notebook cell 6 | PJM 2030 median 46 TWh/yr (P90 270) | `test_energy_units_hand_calculation`, `test_energy_consistent_with_peak_load_and_regions`, end-to-end | Hand over facility-level energy with the conversion to her formula; no water numbers computed here (her nugget) |
 
 ---
 
@@ -308,7 +326,33 @@ The ladder ends at 4,759 MW of P_T (1,176 MW under compounding efficiency), so �
 
 ![Figure 4](../outputs/figures/fig4_handoff.png)
 
-### 4.6 Sensitivity: which uncertainties matter (optional part)
+### 4.6 Electricity use: the handoff to presenter 3 (water)
+
+Annualized AI electricity use (daily energy × 365, training included, **no** summer-peak factor), from the same 200,000 draws as ΔQ. Boundary: approximately facility energy (§2.22). GWh/day = TWh/yr × 1000/365.
+
+| region | year · efficiency | new energy ΔE median (TWh/yr) | median (TWh/yr) | P10 – P90 (TWh/yr) | mean (TWh/yr) | median (GWh/day) |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| global | 2025 | – | 19.2 | 7.4 – 53.3 | 26.9 | 53 |
+| global | 2028 · matures | 162 | 185 | 44.4 – 895 | 425 | 507 |
+| global | 2028 · compounding | 78.0 | 101 | 20.5 – 566 | 270 | 277 |
+| global | 2030 · matures | 211 | 235 | 49.9 – 1,349 | 665 | 643 |
+| global | 2030 · compounding | 38.5 | 61.6 | 8.2 – 539 | 286 | 169 |
+| US | 2025 | – | 9.6 | 3.6 – 26.8 | 13.4 | 26 |
+| US | 2028 · matures | 80.6 | 91.9 | 21.9 – 447 | 213 | 252 |
+| US | 2028 · compounding | 38.7 | 50.3 | 10.1 – 283 | 135 | 138 |
+| US | 2030 · matures | 105 | 117 | 24.7 – 674 | 333 | 319 |
+| US | 2030 · compounding | 19.1 | 30.6 | 4.1 – 269 | 143 | 84 |
+| PJM | 2025 | – | 3.8 | 1.4 – 10.8 | 5.4 | 10 |
+| PJM | 2028 · matures | 31.9 | 36.5 | 8.6 – 179 | 85.2 | 100 |
+| PJM | 2028 · compounding | 15.3 | 19.9 | 3.9 – 114 | 54.0 | 55 |
+| PJM | 2030 · matures | 41.5 | 46.2 | 9.6 – 270 | 133 | 127 |
+| PJM | 2030 · compounding | 7.5 | 12.1 | 1.6 – 107 | 57.4 | 33 |
+
+- PJM in 2030 (default): median 46 TWh/yr (127 GWh/day), but P90 270 TWh/yr: 5.8 times the median. The spread that makes capacity a quantile makes any water budget a quantile question too.
+- Energy and peak load are tied draw by draw: PJM energy × 1000/8,760 × κ equals the peak-load sample exactly (`test_energy_consistent_with_peak_load_and_regions`), so presenter 3's water draws and the ΔQ draws describe the same futures.
+- Files: `outputs/handoff/energy_samples_2028.csv` and `energy_samples_2030.csv` (columns `E2025_TWh_<region>`, `E<year>_TWh_<region>` for global, US, PJM; both efficiency structures; same `draw_id` as the ΔQ files).
+
+### 4.7 Sensitivity: which uncertainties matter (optional part)
 
 First-order (S₁) and total (S_T) Sobol indices of ln P_T for DY 2030/31 by parameter group (SALib, ± 95% half-width), with the closed form:
 
@@ -334,7 +378,7 @@ Growth and query mix together explain 62% of the log-variance under the default 
 | training | 0.004 ± 0.002 | 0.010 |
 | siting and peak | 0.002 ± 0.002 | 0.009 |
 
-### 4.7 Priors used (all independent; `src/aicap/params.py`)
+### 4.8 Priors used (all independent; `src/aicap/params.py`)
 
 | symbol | parameter | distribution | range | median | group | source |
 | :--- | :--- | :--- | ---: | ---: | :--- | :--- |
@@ -363,7 +407,10 @@ Growth and query mix together explain 62% of the log-variance under the default 
 | Assumption | Where it enters | How much it matters | What would change it |
 |---|---|---|---|
 | **Stationary single-rate model vs multi-year growth.** The paper's Λ is one random rate for a stationary queue; AI demand grows over years and varies within days. | Parts A–C (theory); the regime test | The regime conclusion is robust: CV·√E is at least 12 against a switch at ~1.4. The paper's optimality statements are not proved for growing, time-varying rates. | A time-varying model (e.g. M_t/G/∞, Eick, Massey & Whitt 1993) or a multi-period newsvendor |
-| **PJM's demand curve vs a pure newsvendor.** PJM procures against a sloped demand curve with a reliability requirement; there is no single c_cap/c_short. | Part D quantile capacity; Fig. 4 | Labelled an analogy. The implied ratio for the ~30 GW is 0.116; ratios of 0.05–0.50 move Q from 60 to 5.4 GW. | Presenter 3's price model; PJM's actual demand curve parameters |
+| **PJM's demand curve vs a pure newsvendor.** PJM procures against a sloped demand curve with a reliability requirement; there is no single c_cap/c_short. | Part D quantile capacity; Fig. 4 | Labelled an analogy. The implied ratio for the ~30 GW is 0.116; ratios of 0.05–0.50 move Q from 60 to 5.4 GW. | A price model for PJM capacity (no longer part of the group's plan); PJM's actual demand curve parameters |
+| **Energy boundary** for the water handoff: our energy is approximately facility energy; Li et al.'s eₜ is server energy. | Energy files; presenter 3's formula | Off by a factor of PUE in the on-site term if mixed up (PUE 1.11–1.43 in Li et al.'s Table 1). | Agreeing the boundary with presenter 3; per-query energies on a common boundary |
+| **Annualized energy** = level reached in the given year × 365 days; no seasonality. | `pjm_load.energy_twh` | On-site WUE rises in hot weather (Li et al. §3.1), so summer water per kWh is higher than the annual average; not modelled here. | Monthly load and climate data |
+| **Fixed regional shares.** Global → US → PJM by s_US and s_PJM; siting is not a decision here. | `pjm_load.region_share` | Siting and peak explain 2% of the log-variance of peak load. Presenter 3's scheduling makes location a decision, which this model does not. | A siting model, or presenter 3's routing results |
 | **Independence of priors.** All parameters are drawn independently. | `pjm_load.sample_params` | Positive dependence (e.g. growth and mix moving together) widens the spread and raises P90; negative dependence narrows it. Not quantified. | Copulas or joint scenarios from data |
 | **Judgment-based priors** (N₀, σ_c, w shares, a, λ). | `params.py` (marked "assumption") | Sobol: growth and mix together explain 62% of Var ln P_T. Halving their spread cuts P90 − median by 59%. | Better data on volumes and query mix |
 | **Presenter 1's numbers are placeholders** (M_c, σ_c, r, a). | `params.PRESENTER1` | Wh per query explains 5% of Var ln P_T; r and a sit in "mix". | Presenter 1's hand-over; edit one block and rerun |
@@ -390,8 +437,12 @@ Growth and query mix together explain 62% of the log-variance under the default 
 2. **Talk text.** The nugget says the newsvendor rule is "3–11% off when the rate is known". That range is the paper's Table 3; our exact values are 2.6%–7.3%. Suggested wording: "within 1% when the rate is uncertain, but several percent off (3%–7% in my exact computation, 3%–11% in the paper's table) when the rate is known."
 3. **Fenton–Wilkinson** misses the lower quantiles of P_T by up to 44%; with exact log-moments the approximation is within 5.7% (§2.15).
 4. **σ = 3 Cox simulation** is biased low at small n̄ (§4.4): heavy tail, not a bug.
-5. **Linear-scale Sobol** agrees only roughly with the lognormal formula (§4.6).
-6. **Remaining VERIFY items:**
+5. **Linear-scale Sobol** agrees only roughly with the lognormal formula (§4.7).
+6. **Coordination with presenters 3 and 4** (after presenter 3 moved to water):
+   - Agree the energy boundary (facility vs server energy) and the region (global, US, PJM or specific sites) with presenter 3. The handoff provides all three regions at facility level, with the conversion to Li et al.'s formula.
+   - Presenter 4 used to receive a price increase from presenter 3. Someone now has to supply that input; the ΔQ (GW) samples are ready for any price model.
+   - Islam et al. (2017), presenter 3's second reference, was not opened in this build; §2.21 describes it only as she summarizes it.
+7. **Remaining VERIFY items:**
    - Ross, *Introduction to Probability Models* (12th ed.): section numbers for compound and conditional (mixed) Poisson processes. Not confirmed for the 12th edition; the 10th edition uses §5.4.2 and §5.4.3 (per a course page found by search).
    - Presenter 1's numbers (M_c, σ_c, r, a) are placeholders.
    - The PJM, IEA, TechCrunch, Google I/O, Oviedo et al., Bai et al., AI Energy Score, Norris et al. and other sources listed as "checked" in the spec were opened by the author during preparation but not re-opened in this build (`docs/REFERENCES.md` gives the status of each).
@@ -426,13 +477,15 @@ Outputs: `outputs/figures/` (four figures, PNG at 200 dpi and SVG), `outputs/cac
 
 **Figure 3: Cox floor.** "Presenter 1's lognormal noise per query matters for ten queries, not for ten billion: it falls like 1/√n̄. What does not fall is our uncertainty about the rate itself, the orange floor." *Takeaway: at grid scale, only the mean energy per query and the volume uncertainty survive.*
 
-**Figure 4: handoff.** "New PJM peak load from AI in 2030/31 has a median of 5.4 GW but a P90 of 34 GW. If a shortfall costs ten times as much as a GW of capacity, you buy the P90, not the median; the 29 GW difference is what uncertainty itself costs." *Takeaway: the capacity bought is a high quantile, and that gap is where AI's uncertainty shows up on electric bills.*
+**Figure 4: capacity as a quantile.** "New PJM peak load from AI in 2030/31 has a median of 5.4 GW but a P90 of 34 GW. If a shortfall costs ten times as much as a GW of capacity, you buy the P90, not the median; the 29 GW difference is what uncertainty itself costs." Live: flip the efficiency toggle to compounding and the median drops to 1.0 GW and P90 to 13 GW; the quantile logic does not change. *Takeaway: the capacity bought is a high quantile, and that gap is where AI's uncertainty shows up on electric bills.*
+
+**Closing bridge to presenter 3 (cell 6).** "The same draws give AI's electricity use: in PJM in 2030 a median of 46 TWh a year, with a P90 of 270. I've shown how much to plan for before we know the demand. Presenter 3 shows what each of those kilowatt-hours costs in water, on site for cooling and off site at the power plant, and how choosing where the computing runs keeps that within a budget." *Takeaway: planning sizes for a quantile; operating keeps the budget.*
 
 **Likely questions**
 1. *Why not just use the mean or median forecast?* Because buying too little costs more than buying too much. The optimal order is the quantile where P(ΔQ > Q) equals the cost ratio. The median is optimal only when the two costs are equal.
 2. *Does PJM really buy a quantile?* Not literally: PJM procures against a sloped demand curve with a reliability target. The newsvendor reading is an analogy that shows why the hedge must scale with forecast uncertainty. PJM's ~30 GW for all data centres would sit at about the 88% quantile of our AI-only distribution.
 3. *How sensitive is this to your priors?* Very: volume growth and query mix explain 31% and 31% of the log-variance. Halving their uncertainty shrinks the P90 − median gap by 59%. That is the policy hook: better forecasts are worth GW.
-4. *What if efficiency keeps compounding?* Then the 2030/31 median falls to 1.0 GW and P90 to 13 GW. Live toggle in cell 5. The ranking of rules does not change.
+4. *How does this connect to the water part?* Water scales with energy, so presenter 3 gets the same draws as electricity use (TWh/yr). Expected water needs only expected energy, but whether a water budget holds depends on the whole distribution: the same quantile logic. And where I treat siting as uncertain, presenter 3 makes it a decision.
 5. *Your paper reproduction doesn't match the paper's tables?* It matches Table 4 exactly; Tables 2, 3 and 7 seem to come from a different computation that no single parameter change can reproduce. Every version shows the same pattern: ≤ 1% when the rate is uncertain, several percent when it is known.
 
 ---
@@ -462,3 +515,7 @@ Outputs: `outputs/figures/` (four figures, PNG at 200 dpi and SVG), `outputs/cac
 | Sobol index | Share of output variance explained by an input (first order) or by it and its interactions (total) |
 | Bootstrap | Re-estimating a statistic on resamples of the data to get its standard error |
 | P10, P50, P90 | 10th, 50th (median) and 90th percentiles |
+| On-site WUE (ρ_s1) | Water usage effectiveness: litres of water consumed for cooling per kWh of server energy |
+| Off-site EWIF (ρ_s2) | Electricity water intensity factor: litres consumed at power plants per kWh generated |
+| Server vs facility energy | IT equipment energy vs whole data-centre energy; facility = PUE × server |
+| Virtual queue (Lyapunov) | A running tally of how far a long-run budget has been exceeded; scheduling that keeps it stable keeps the budget on average |

@@ -77,3 +77,12 @@ Decision: the 2 × ~20 MB handoff CSVs are git-ignored (deterministic with the f
 - Correction: the five entries above marked *(time corrected)* originally carried estimated clock times (up to "21:45") that were wrong. They now use the real times from the git commits (17:55:59, 18:01:53, 18:15:00, 18:28:24, 18:32:52, 18:46:38). Content unchanged.
 - Final clean run at commit f8bfb71 (code tree clean): `run_all.py --recompute` rebuilt both caches and all outputs in 104 s; `summary.json` and the regime cache both record git f8bfb71, `git_dirty: False`. Notebook re-executed in place from a fresh kernel: 6.4 s total, slowest cell 2.7 s, no error outputs.
 - Process note: one shell command silently did nothing (a mistyped script path piped into `tail` hid the error); caught by checking the output and re-run directly.
+
+**2026-10-12 12:54** — Change request: presenter 3 now covers AI's water footprint (Li et al. 2025; Islam et al. 2017).
+- What: added annualized electricity use to the model and the handoff, and rewrote the bridge.
+- Why: water scales with energy, not with summer-peak GW, so presenter 3 needs energy draws, not ΔQ.
+- Checked Li et al. (arXiv:2304.03271 v5, §3.1, p.4): Water = Σ e_t [ρ_s1 + θ ρ_s2] with e_t = **server** energy, θ = PUE. Our per-query energies are close to facility energy F = θe (Google's 0.24 Wh includes overhead), so the README gives Water = F(ρ_s1/θ + ρ_s2). Table 1 values (U.S. average PUE 1.17, WUE 0.55, EWIF 3.142 L/kWh; Virginia 1.14, 0.14, 2.385) quoted with the citation. Islam et al. (2017) not opened; described only as presenter 3 summarizes it.
+- Code: `pjm_load.energy_twh` (TWh/yr = daily energy × 365, training included, no κ; regions global, US, PJM), energy in `simulate`, `energy_tables` in `summarize`; `quantile_table` can skip the bootstrap; handoff split into `write_energy_csvs`, `write_peak_csvs`, `handoff_readme`.
+- Result (before the final run): PJM 2025 median 3.8 TWh/yr; 2030 default median 46, P90 270 TWh/yr. Check: PJM energy × 1000/8760 × κ reproduces the peak-load draws exactly.
+- Docs: notebook intro and §6 (energy table + bridge; file export split into its own cell to stay under 5 s), guide (overview and diagram, §2.16–2.18, new §2.21–2.22, §3 step 13, §4.6, §5, §6, §8, glossary), README, REFERENCES (Li et al. added as checked).
+- Tests: 197 pass (new: energy hand calculation, energy vs peak consistency, end-to-end checks of the energy files and the bridge output).

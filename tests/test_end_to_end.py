@@ -49,13 +49,19 @@ def test_run_all_completes(tmp_outputs):
     for f in FIGS:
         assert (tmp_outputs / "figures" / f"{f}.png").stat().st_size > 50_000
         assert (tmp_outputs / "figures" / f"{f}.svg").exists()
-    for f in ["dQ_samples_DY2028.csv", "dQ_samples_DY2030.csv", "handoff_summary.json", "README.md"]:
+    for f in ["dQ_samples_DY2028.csv", "dQ_samples_DY2030.csv", "energy_samples_2028.csv",
+              "energy_samples_2030.csv", "handoff_summary.json", "README.md"]:
         assert (tmp_outputs / "handoff" / f).exists()
+    assert "energy" in s["partD"] and "energy" in json.loads((tmp_outputs / "handoff" / "handoff_summary.json").read_text())
     import pandas as pd
     df = pd.read_csv(tmp_outputs / "handoff" / "dQ_samples_DY2030.csv", comment="#")
     assert list(df.columns) == ["draw_id", "dQ_GW", "P0_GW", "PT_GW", "efficiency_structure"]
     assert len(df) == 2 * s["partD"]["n_draws"]
     assert (abs(df["PT_GW"] - df["P0_GW"] - df["dQ_GW"]) < 1e-4 * (1 + df["PT_GW"].abs())).all()
+    en = pd.read_csv(tmp_outputs / "handoff" / "energy_samples_2030.csv", comment="#")
+    assert list(en.columns) == ["draw_id", "efficiency_structure", "E2025_TWh_global", "E2030_TWh_global",
+                                "E2025_TWh_US", "E2030_TWh_US", "E2025_TWh_PJM", "E2030_TWh_PJM"]
+    assert len(en) == len(df) and (en["draw_id"].values == df["draw_id"].values).all()
 
 
 def test_notebook_executes_without_errors(tmp_outputs):
@@ -73,3 +79,5 @@ def test_notebook_executes_without_errors(tmp_outputs):
     n_images = sum("image/png" in o.get("data", {}) for c in nb.cells if c.cell_type == "code"
                    for o in c.get("outputs", []))
     assert n_images == 4
+    assert any("Bridge:" in o.get("text", "") for c in nb.cells if c.cell_type == "code"
+               for o in c.get("outputs", []))

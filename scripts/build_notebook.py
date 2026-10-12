@@ -13,7 +13,7 @@ code = lambda s: cells.append(nbf.v4.new_code_cell(s.strip()))
 md("""
 # What does AI really cost? From one query to PJM's capacity market
 
-**Presenter 2: code demo (≈12 min).** Presenter 1's Wh per query → a distribution of new PJM summer-peak load ΔQ (GW) → why the capacity to buy is a *quantile* of ΔQ, not its median → samples handed to presenter 3.
+**Presenter 2: code demo (≈12 min).** Presenter 1's Wh per query → a distribution of AI electricity use and of new PJM summer-peak load ΔQ (GW) → why the capacity to buy is a *quantile* of that distribution, not its median → energy samples handed to presenter 3, who turns them into water.
 
 Primary reference: Bassamboo, Randhawa & Zeevi (2010), *Capacity sizing under parameter uncertainty: safety staffing principles revisited*, Management Science 56(10).
 """)
@@ -202,17 +202,31 @@ print(f"Flexible load: halving the shortage cost moves the fractile from P90 to 
 ''')
 
 md("""
-### 6 · Handoff to presenter 3 *(1 min)*
+### 6 · Bridge to presenter 3: from energy to water *(1 min)*
 
-Samples of ΔQ (GW) for DY 2028/29 and 2030/31, both efficiency structures. For a convex price curve $p$, Jensen gives $E[p(\\Delta Q)] \\ge p(E[\\Delta Q])$, so **push every sample through the price function**; never just the median.
+The water footprint is driven by **energy**, not peak load. Li et al. (2025): operational water $= \\sum_t e_t\\,[\\rho_{s1,t} + \\theta_t\\,\\rho_{s2,t}]$, with $e_t$ the server energy, $\\rho_{s1}$ the on-site WUE (cooling), $\\theta$ the PUE and $\\rho_{s2}$ the off-site EWIF (power plants).
+Water is linear in energy, so *expected* water needs only expected energy, but whether a **water budget** holds depends on the whole distribution: the same quantile logic as capacity.
 """)
 code(r'''
-summary_d = pl.summarize(sim, n_boot=50, verbose=False)
-out = pl.write_handoff(sim, summary_d, run_info())
+E = pl.energy_tables(sim, n_boot=0)   # annualized TWh/yr; facility-level energy (see the handoff README)
+g = pl.TWH_TO_GWH_PER_DAY
+rows = {}
+for r in pl.REGIONS:
+    b, e = E["baseline_2025"][r], E["cases"]["2030_matures"][r]["E"]
+    rows[r] = {"2025 median (TWh/yr)": b["P50"], "2030 median (TWh/yr)": e["P50"], "2030 P90 (TWh/yr)": e["P90"],
+               "2030 median (GWh/day)": e["P50"] * g, "2030 P90 (GWh/day)": e["P90"] * g}
+show(pd.DataFrame(rows).T, {c: "{:,.1f}" for c in pd.DataFrame(rows).T.columns})
+print("Bridge: I sized capacity before demand is known: a quantile of the load distribution. Presenter 3 takes the same\n"
+      "energy draws and asks what they cost in water, on site for cooling and off site at the power plant, and how\n"
+      "choosing where the computing runs can keep that within a budget.")
+''')
+code(r'''
+summary_d = pl.summarize(sim, n_boot=20, verbose=False, energy_n_boot=0)
+out = pl.write_handoff(sim, summary_d, run_info(), csv=False)   # summary JSON + README (fast)
+pl.write_energy_csvs(sim, run_info())                            # energy samples for presenter 3
+pl.write_peak_csvs(sim, run_info())                              # peak-load samples (GW)
 for f in sorted(out.iterdir()):
     print(f"{f.name:28s} {f.stat().st_size / 1e6:6.2f} MB")
-print("\nBridge: the GW I hand over is a distribution; the capacity bought is a high quantile of it, "
-      "and presenter 3 turns each draw into a price.")
 ''')
 
 nb["cells"] = cells

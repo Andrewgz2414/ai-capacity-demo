@@ -43,3 +43,11 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (reason g
 - [x] `docs/REFERENCES.md`
 - [x] `README.md`
 - [x] Final report in chat (after the final clean run)
+
+## Change request (2026-10-12): presenter 3 now covers AI's water footprint
+- [x] Read the water-footprint formula in Li et al. (arXiv:2304.03271 v5, §3.1, Table 1) to fix the energy boundary
+- [x] `pjm_load.py`: annualized energy (TWh/yr, no peak factor) for global, US, PJM; 2025 and delivery years; energy quantile tables in `summary.json`
+- [x] Handoff: `energy_samples_2028.csv`, `energy_samples_2030.csv`; README rewritten for presenter 3 (water) and price users; summary JSON extended
+- [x] Bridge rewritten: notebook intro and section 6, guide (overview, §2.16–2.18, new §2.21–2.22, §4.6, §5, §6, §8, glossary), README, references
+- [x] Tests: energy units and consistency with peak load; end-to-end checks of the new files
+- [x] Rerun, re-execute the notebook, re-render the guide, commit, push to GitHub

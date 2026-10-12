@@ -112,3 +112,27 @@ def test_jensen_gap_for_a_convex_price_curve():
     price = lambda x: 50 + 2 * np.maximum(x, 0) + 0.05 * np.maximum(x - 10, 0) ** 2  # noqa: E731 (convex)
     assert price(dq).mean() >= price(dq.mean())
     assert price(dq).mean() > price(np.median(dq))
+
+
+def test_energy_units_hand_calculation():
+    """2.5e9 prompts/day x 0.34 Wh x 365 days = 0.310 TWh/yr (sigma = 0, beta = 1, no training, all chat)."""
+    th = {"N0": np.array([2.5e9]), "M_c": np.array([0.34]), "sigma_c": np.array([0.0]), "beta": np.array([1.0]),
+          "tau": np.array([0.0]), "w_R0": np.array([0.0]), "w_A0": np.array([0.0]), "r": np.array([10.0]),
+          "a": np.array([100.0])}
+    assert pl.energy_twh(th, None, region="global")[0] == pytest.approx(2.5e9 * 0.34 * 365 / 1e12)
+    assert pl.TWH_TO_GWH_PER_DAY == pytest.approx(1000 / 365)
+
+
+def test_energy_consistent_with_peak_load_and_regions():
+    """TWh/yr -> average GW (x 1000/8760) times kappa gives the summer-peak GW; global >= US >= PJM."""
+    sim = pl.simulate(n=20_000)
+    th = sim["theta"]
+    to_peak_gw = lambda e: e * 1e3 / 8760 * th["kappa"]  # noqa: E731
+    assert np.allclose(to_peak_gw(sim["E0"]["PJM"]), sim[(2030, "matures")]["P0"])
+    for year in DELIVERY_YEARS:
+        for s in ("matures", "compounding"):
+            r = sim[(year, s)]
+            assert np.allclose(to_peak_gw(r["ET"]["PJM"]), r["PT"])
+            assert np.all(r["ET"]["global"] >= r["ET"]["US"]) and np.all(r["ET"]["US"] >= r["ET"]["PJM"])
+    tables = pl.energy_tables(sim, n_boot=0)
+    assert tables["cases"]["2030_matures"]["PJM"]["E"]["P50"] > tables["baseline_2025"]["PJM"]["P50"]
