@@ -86,3 +86,8 @@ Decision: the 2 × ~20 MB handoff CSVs are git-ignored (deterministic with the f
 - Result (before the final run): PJM 2025 median 3.8 TWh/yr; 2030 default median 46, P90 270 TWh/yr. Check: PJM energy × 1000/8760 × κ reproduces the peak-load draws exactly.
 - Docs: notebook intro and §6 (energy table + bridge; file export split into its own cell to stay under 5 s), guide (overview and diagram, §2.16–2.18, new §2.21–2.22, §3 step 13, §4.6, §5, §6, §8, glossary), README, REFERENCES (Li et al. added as checked).
 - Tests: 197 pass (new: energy hand calculation, energy vs peak consistency, end-to-end checks of the energy files and the bridge output).
+
+**2026-10-12 12:56** — Regenerated outputs for the water handoff and pushed.
+- Problem: the notebook's export cell took 4.6 s (limit 5 s); split into a summary/README cell (1.3 s) and a CSV cell (3.3 s). Fixed a thousands-separator inconsistency in the handoff README.
+- Final run at commit 5db8eea (clean code tree): run_all 14.8 s from caches (regime and Cox caches unchanged; Parts B and C code untouched since they were built); notebook 8.6 s fresh, slowest cell 3.3 s, no error outputs; guide re-rendered (235 placeholders). 197 tests pass.
+- Key numbers: PJM electricity use 2025 median 3.8 TWh/yr; 2030 (default) median 46, P90 270 TWh/yr (127 and 740 GWh/day); compounding median 12 TWh/yr.

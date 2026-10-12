@@ -1,6 +1,6 @@
 # Guide: AI load, parameter uncertainty and capacity sizing
 
-> **Run:** 2026-10-12T12:52:57-04:00 · **git commit:** `5f9617d` · rendered from `docs/GUIDE_TEMPLATE.md` by `scripts/build_guide.py`.
+> **Run:** 2026-10-12T12:56:16-04:00 · **git commit:** `5db8eea` · rendered from `docs/GUIDE_TEMPLATE.md` by `scripts/build_guide.py`.
 > Every number below is read from `outputs/summary.json` (or quoted from a cited source, with the citation next to it). Presenter 1's per-query numbers: **placeholder (spec section 6 values); replace with presenter 1's hand-over**.
 
 ---

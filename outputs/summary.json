@@ -1,8 +1,8 @@
 {
  "run": {
-  "timestamp": "2026-10-12T12:52:57-04:00",
-  "git_commit": "5f9617d",
-  "git_dirty": true,
+  "timestamp": "2026-10-12T12:56:16-04:00",
+  "git_commit": "5db8eea",
+  "git_dirty": false,
   "python": "3.13.13",
   "numpy": "2.5.4",
   "scipy": "1.18.1"
@@ -2950,5 +2950,5 @@
    }
   }
  },
- "runtime_s": 14.735316038131714
+ "runtime_s": 14.757272005081177
 }
