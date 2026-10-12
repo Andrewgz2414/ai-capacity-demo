@@ -222,9 +222,11 @@ print("Bridge: I sized capacity before demand is known: a quantile of the load d
 ''')
 code(r'''
 summary_d = pl.summarize(sim, n_boot=20, verbose=False, energy_n_boot=0)
-out = pl.write_handoff(sim, summary_d, run_info(), csv=False)   # summary JSON + README (fast)
-pl.write_energy_csvs(sim, run_info())                            # energy samples for presenter 3
-pl.write_peak_csvs(sim, run_info())                              # peak-load samples (GW)
+out = pl.write_handoff(sim, summary_d, run_info(), csv=False)   # handoff_summary.json + README.md
+''')
+code(r'''
+pl.write_energy_csvs(sim, run_info())   # energy samples (TWh/yr) for presenter 3
+pl.write_peak_csvs(sim, run_info())     # peak-load samples (GW)
 for f in sorted(out.iterdir()):
     print(f"{f.name:28s} {f.stat().st_size / 1e6:6.2f} MB")
 ''')

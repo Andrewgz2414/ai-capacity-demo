@@ -536,8 +536,8 @@ def handoff_readme(sim: dict, d: dict, info: dict) -> str:
     erows = []
     for r in REGIONS:
         b, e = E["baseline_2025"][r], E["cases"]["2030_matures"][r]["E"]
-        erows.append(f"| {r} | {b['P50']:.1f} ({b['P50'] * g:.0f}) | {e['P10']:.0f} | {e['P50']:.0f} ({e['P50'] * g:.0f}) "
-                     f"| {e['P90']:.0f} ({e['P90'] * g:,.0f}) | {e['mean']:.0f} |")
+        erows.append(f"| {r} | {b['P50']:.1f} ({b['P50'] * g:.0f}) | {e['P10']:,.0f} | {e['P50']:,.0f} ({e['P50'] * g:,.0f}) "
+                     f"| {e['P90']:,.0f} ({e['P90'] * g:,.0f}) | {e['mean']:,.0f} |")
     erows = "\n".join(erows)
     pjm_c = E["cases"]["2030_compounding"]["PJM"]["E"]
     return f"""# Handoff: AI electricity use and new PJM peak load (samples)
