@@ -1,7 +1,7 @@
 {
  "run": {
-  "timestamp": "2026-10-12T12:56:16-04:00",
-  "git_commit": "5db8eea",
+  "timestamp": "2026-10-12T13:11:56-04:00",
+  "git_commit": "a859368",
   "git_dirty": false,
   "python": "3.13.13",
   "numpy": "2.5.4",
@@ -2053,6 +2053,62 @@
     "log_sd": 1.6495495933232638
    }
   },
+  "newsvendor_check": {
+   "2030_matures": {
+    "0.05": {
+     "argmin_Q": 59.68429682897571,
+     "argmin_rank": 0.949995,
+     "quantile_Q": 59.68475066602989,
+     "cost_opt": 7.901382699822968,
+     "median": 5.434752204865077,
+     "mean": 16.75560983199893,
+     "excess_median": 0.660320432374581,
+     "excess_mean": 0.27285584106794025,
+     "cap_GW": 156.373,
+     "excess_median_capped": 0.9675239639704625,
+     "excess_mean_capped": 0.48237780136982633
+    },
+    "0.10": {
+     "argmin_Q": 34.11786004402015,
+     "argmin_rank": 0.899995,
+     "quantile_Q": 34.11794578321568,
+     "cost_opt": 10.127887520943219,
+     "median": 5.434752204865077,
+     "mean": 16.75560983199893,
+     "excess_median": 0.3221478539409457,
+     "excess_mean": 0.07575262768796165,
+     "cap_GW": 156.373,
+     "excess_median_capped": 0.42822464037366736,
+     "excess_mean_capped": 0.14268039454339476
+    },
+    "0.25": {
+     "argmin_Q": 13.942027600294018,
+     "argmin_rank": 0.75,
+     "quantile_Q": 13.941911862125842,
+     "cost_opt": 13.35126582702311,
+     "median": 5.434752204865077,
+     "mean": 16.75560983199893,
+     "excess_median": 0.06400230251932149,
+     "excess_mean": 0.0042825348622590464,
+     "cap_GW": 156.373,
+     "excess_median_capped": 0.07881163422520676,
+     "excess_mean_capped": 6.778870671131365e-05
+    },
+    "0.50": {
+     "argmin_Q": 5.434737197323885,
+     "argmin_rank": 0.499995,
+     "quantile_Q": 5.434752204865077,
+     "cost_opt": 15.564465632716391,
+     "median": 5.434752204865077,
+     "mean": 16.75560983199893,
+     "excess_median": 0.0,
+     "excess_mean": 0.13061032493096758,
+     "cap_GW": 156.373,
+     "excess_median_capped": 0.0,
+     "excess_mean_capped": 0.10334489183102114
+    }
+   }
+  },
   "fermi_ladder": {
    "2028_matures": [
     {
@@ -2950,5 +3006,5 @@
    }
   }
  },
- "runtime_s": 14.757272005081177
+ "runtime_s": 14.904896974563599
 }
