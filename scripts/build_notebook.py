@@ -13,7 +13,14 @@ code = lambda s: cells.append(nbf.v4.new_code_cell(s.strip()))
 md("""
 # What does AI really cost? From one query to PJM's capacity market
 
-**Presenter 2: code demo (≈12 min).** Presenter 1's Wh per query → a distribution of AI electricity use and of new PJM summer-peak load ΔQ (GW) → why the capacity to buy is a *quantile* of that distribution, not its median → energy samples handed to presenter 3, who turns them into water.
+**Presenter 2: code demo (≈13 min).** Presenter 1's Wh per query → a distribution of AI electricity use and of new PJM summer-peak load ΔQ (GW) → why the capacity to buy is a *quantile* of that distribution, not its median → energy samples handed to presenter 3, who turns them into water.
+
+| Part | What | Time |
+|---|---|---|
+| **I · Derivation** | the newsvendor first-order condition: capacity is a quantile | 3 min |
+| **II · Demo** (cells 1–5) | presenter 1's Wh → the paper → when the quantile rule wins → where AI sits → PJM ΔQ and the capacity to buy | 7 min |
+| **III · Pseudocode** | the whole method in eight lines, then run once more | 1.5 min |
+| **6 · Bridge** | energy to presenter 3 (water) | 1 min |
 
 Primary reference: Bassamboo, Randhawa & Zeevi (2010), *Capacity sizing under parameter uncertainty: safety staffing principles revisited*, Management Science 56(10).
 """)
@@ -55,12 +62,50 @@ def show(df, fmt=None):
         [{"selector": "td, th", "props": [("font-size", "15px"), ("padding", "4px 10px")]}])
     display(sty)
 
-sim = pl.simulate(n=N_DRAWS, seed=SEED)   # 200,000 parameter draws (0.05 s); used in cells 3, 5 and 6
+sim = pl.simulate(n=N_DRAWS, seed=SEED)   # 200,000 parameter draws (0.05 s); used in Parts I–III and cell 6
 print(run_info())
 ''')
 
+md(r"""
+## Part I · The heart: the newsvendor first-order condition *(3 min)*
+
+**Problem.** Choose capacity $Q$ **before** demand $X$ is known ($X$ random with CDF $F$ and density $f$). Each unit of capacity costs $c$ whether it is used or not; each unit of demand above capacity costs $u > c$.
+$$\bar\Pi(Q) = c\,Q + u\,E\big[(X-Q)^+\big] = c\,Q + u\int_Q^\infty (x-Q)\,f(x)\,dx$$
+
+**1 · Differentiate** (Leibniz rule; the boundary term $(Q-Q)\,f(Q)$ vanishes):
+$$\frac{d}{dQ}\,E\big[(X-Q)^+\big] = -\int_Q^\infty f(x)\,dx = -P(X>Q) \qquad\Longrightarrow\qquad \bar\Pi'(Q) = c - u\,P(X>Q)$$
+
+**2 · Convexity:** $\bar\Pi''(Q) = u\,f(Q) \ge 0$, so the stationary point is the global minimum.
+
+**3 · First-order condition = the critical quantile:**
+$$\boxed{\;P(X > Q^*) = \frac{c}{u} =: \alpha \quad\Longleftrightarrow\quad Q^* = F^{-1}(1-\alpha)\;}$$
+(if $c \ge u$, buy nothing). *Marginal reading:* one more unit costs $c$ for sure and saves $u$ only if it gets used, which happens with probability $P(X > Q)$; keep adding until the two balance. *Classic form:* overage cost $c_o = c$ and underage cost $c_u = u - c$ give $F(Q^*) = c_u/(c_u + c_o)$, so the median is optimal only when $c_o = c_u$, i.e. $u = 2c$.
+
+**In the paper** (eqs. 2–3): $X$ is the arrival rate $\Lambda$ and capacity is $\mu b$. Fluid approximation: the unserved rate $(\Lambda - \mu b)^+$ abandons (penalty $p$ each) after waiting in a queue of about $(\Lambda - \mu b)^+/\gamma$ (holding cost $h$), so $u = p + h/\gamma$ and
+$$P(\Lambda > \mu\bar b) = \frac{c}{\mu\,(p + h/\gamma)} = \frac{1/3}{1 \cdot (1 + 1/3)} = \frac14 \quad\Longrightarrow\quad \bar b = \text{75th percentile of } \Lambda/\mu .$$
+The fluid step throws away the Poisson noise, of order $\sqrt{E}$. Part II asks when that is safe.
+
+**For AI load:** $X = \Delta Q$ (new PJM peak load, GW), $c = c_\text{cap}$, $u = c_\text{short}$: buy the $(1 - c_\text{cap}/c_\text{short})$ quantile of ΔQ.
+""")
+code(r'''
+ALPHA = 0.10   # c_cap / c_short  ← try 0.25 or 0.50 live
+from aicap.erlang_a import SECTION4
+print(f"Paper §4: α = c/(μ(p + h/γ)) = {SECTION4.fractile:.2f}  →  b̄ = {100 * (1 - SECTION4.fractile):.0f}th percentile of Λ/μ")
+d30 = sim[(2030, "matures")]["dQ"]
+chk = pl.newsvendor_check(d30, ratios=(ALPHA,))[f"{ALPHA:.2f}"]
+print(f"AI, DY 2030/31, α = {ALPHA:.2f}")
+lines = [(f"brute force: minimizer of α·Q + E(ΔQ − Q)⁺ over all {N_DRAWS:,} draws", chk["argmin_Q"]),
+         (f"first-order condition: the {1 - ALPHA:.0%} quantile of ΔQ", chk["quantile_Q"])]
+for text, v in lines:
+    print(f"  {text + ':':<{max(len(t) for t, _ in lines) + 1}} {v:6.2f} GW")
+print(f"  buying the median ({chk['median']:.1f} GW) instead raises the expected cost by {chk['excess_median']:.0%}")
+fig0 = plotting.fig0_newsvendor_foc(d30, ALPHA)   # run_all.py saves this figure (α = 0.10) for slides
+''')
+
 md("""
-### 1 · From presenter 1: energy per query *(1 min)*
+## Part II · Demo *(7 min)*: does the fluid step hold for AI, and what does the quantile come to?
+
+### 1 · From presenter 1: energy per query *(½ min)*
 
 Per-query energy is lognormal with median $M$ and log-sd $\\sigma$. Summed over billions of queries only the **mean** survives:
 $$E[X] = M\\,e^{\\sigma^2/2}$$
@@ -77,12 +122,11 @@ print(f"mean/median = e^(σ²/2) = {cox.mean_over_median(sc):.2f}   ({PRESENTER1
 ''')
 
 md("""
-### 2 · The paper: capacity under an uncertain arrival rate *(3 min)*
+### 2 · The paper: is dropping the queue noise safe? *(1½ min)*
 
-Erlang-A queue (M/M/b+M): Poisson arrivals at rate $\\Lambda$ (itself random), $b$ servers, service rate $\\mu=1$, abandonment $\\gamma=3$. Capacity is fixed **before** $\\Lambda$ is known:
+Erlang-A queue (M/M/b+M): Poisson arrivals at rate $\\Lambda$ (itself random), $b$ servers, service rate $\\mu=1$, abandonment $\\gamma=3$. The **exact** cost keeps the Poisson noise; its minimizer $b^*$ is found by search:
 $$\\Pi(b) = c\\,b + (h + p\\gamma)\\,E\\big[(N-b)^+\\big]$$
-Newsvendor rule (ignore Poisson noise, hedge only the rate): $P(\\Lambda > \\mu\\bar b) = \\dfrac{c}{\\mu(p + h/\\gamma)} = \\tfrac14$, so $\\bar b$ is the 75th percentile of $\\Lambda$.
-Known-rate rule: the best $b$ if $\\Lambda$ were exactly its mean ($\\approx E + \\beta\\sqrt{E}$).
+Against it: the newsvendor rule $\\bar b$ from Part I (75th percentile of $\\Lambda$, Poisson noise ignored) and the known-rate rule, the best $b$ if $\\Lambda$ were exactly its mean ($\\approx E + \\beta\\sqrt{E}$).
 """)
 code(r'''
 rows = reproduction_rows(PAPER_TABLE2_3)
@@ -96,7 +140,7 @@ plotting.save(fig1, "fig1_reproduction");
 ''')
 
 md("""
-### 3 · When does the quantile rule win? *(2 min)*
+### 3 · When does the quantile rule win? *(1½ min)*
 
 **Theorem 1** (paper §5): the newsvendor rule is near-optimal when $\\mathrm{CV} \\gg 1/\\sqrt{E}$ (uncertainty-dominated); square-root safety staffing matters when $\\mathrm{CV} \\ll 1/\\sqrt{E}$ ($E$ = offered load in Erlangs).
 """)
@@ -120,7 +164,7 @@ plotting.save(fig2, "fig2_regime_map");
 ''')
 
 md("""
-### 4 · AI queries as a Cox process *(2 min)*
+### 4 · AI queries as a Cox process *(1 min)*
 
 Daily queries $N \\mid \\xi \\sim \\text{Poisson}(\\bar n\\,\\xi)$ with an uncertain rate multiplier $\\xi$; daily energy $S = \\sum_{i\\le N} X_i$:
 $$\\mathrm{CV}^2(S) = \\frac{e^{\\sigma^2}}{\\bar n} + \\mathrm{CV}^2_{\\text{rate}}$$
@@ -148,10 +192,10 @@ plotting.save(fig3, "fig3_cox_floor");
 ''')
 
 md("""
-### 5 · New PJM summer-peak load ΔQ and the capacity to buy *(3 min)*
+### 5 · New PJM summer-peak load ΔQ and the capacity to buy *(2½ min)*
 
 $$P_T = \\frac{N_0\\,G_T\\,m_c\\,\\mathrm{mix}_T}{H_T}\\cdot\\frac{(1+\\tau)\\,s_{US}\\,s_{PJM}\\,\\kappa}{24\\ \\text{h}},\\qquad \\Delta Q = P_T - P_0$$
-Newsvendor reading *(an analogy, not PJM's method)*: buy $Q$ with $P(\\Delta Q > Q) = c_{\\text{cap}}/c_{\\text{short}}$.
+Part I with $X = \\Delta Q$ *(an analogy, not PJM's method)*: buy $Q$ with $P(\\Delta Q > Q) = c_{\\text{cap}}/c_{\\text{short}}$.
 
 **Fermi ladder**: the median path from ChatGPT today to PJM in 2030/31, one factor per step.
 """)
@@ -189,7 +233,7 @@ plotting.save(fig4, "fig4_handoff");
 ''')
 
 md("""
-**Policy hooks.** *Better forecasting*: halve the uncertainty of growth and query mix and see how much capacity is no longer needed. *Flexible load*: curtailable data centres lower the cost of a shortfall, so the fractile and the capacity both drop.
+**Policy hooks** *(optional, if time)*. *Better forecasting*: halve the uncertainty of growth and query mix and see how much capacity is no longer needed. *Flexible load*: curtailable data centres lower the cost of a shortfall, so the fractile and the capacity both drop.
 """)
 code(r'''
 from aicap.params import scaled_priors
@@ -199,6 +243,49 @@ print(f"Cost of uncertainty (P90 − median), DY 2030/31: {base['gap']:.1f} GW �
       f"with half the growth and mix uncertainty ({1 - better['gap'] / base['gap']:.0%} less)")
 q90, q80 = np.quantile(d30, [0.90, 0.80])
 print(f"Flexible load: halving the shortage cost moves the fractile from P90 to P80: {q90:.1f} GW → {q80:.1f} GW")
+''')
+
+md(r"""
+## Part III · The method as pseudocode *(1½ min)*
+
+```text
+SIZE-CAPACITY(priors, horizon T, cost ratio α = c_cap / c_short, draws n)        code (src/aicap/)
+
+  ▸ Step 1: is the newsvendor (fluid) step safe?                         Part II, cells 2–4
+  1   E ← offered load;  CV ← coefficient of variation of the rate
+  2   if CV·√E ≲ 1.4:  return the square-root rule  E + β√E               capacity_rules.known_rate_capacity
+
+  ▸ Step 2: sample what we do not know                                   Part II, cell 5
+  3   for i = 1, …, n:                                                    pjm_load.simulate
+  4       θᵢ ← one independent draw from each prior                       pjm_load.sample_params
+  5       ΔQᵢ ← P_T(θᵢ) − P_0(θᵢ)                                          pjm_load.delta_q
+
+  ▸ Step 3: the first-order condition                                    Part I
+  6   Q* ← empirical (1 − α) quantile of ΔQ₁, …, ΔQₙ      ▹ P(ΔQ > Q*) = α  pjm_load.quantile_capacity
+  7   SE ← std. dev. of line 6 over B bootstrap resamples of ΔQ           pjm_load.quantile_table
+  8   return Q*, SE
+```
+For AI, line 2 never fires: CV·√E sits well above the switch at ≈ 1.4 (cells 3–4). Below, lines 3–8 run once more with fresh random numbers.
+""")
+code(r'''
+def size_capacity(alphas, T=5, n=N_DRAWS, seed=SEED + 1, B=50):
+    """Lines 3-8 of SIZE-CAPACITY for several cost ratios at once, with fresh random numbers."""
+    rng = np.random.default_rng(seed)
+    theta = pl.sample_params(n, rng)                                        # lines 3-4
+    dQ = pl.delta_q(theta, T)["dQ"]                                         # line 5
+    probs = 1 - np.asarray(alphas)
+    Q = np.quantile(dQ, probs)                                              # line 6: the first-order condition
+    boot = np.array([np.quantile(dQ[rng.integers(0, n, n)], probs) for _ in range(B)])  # line 7
+    return Q, boot.std(axis=0, ddof=1)                                      # line 8
+
+ratio_lo = ai["ratio_day_ahead_vs_concurrency"][0]
+print(f"Line 2: CV·√E for AI is at least {ratio_lo:.0f}, against a switch at ≈ {kappa:.1f}, so continue to line 3.")
+Q, se = size_capacity(COST_RATIOS)
+ref = pl.quantile_capacity(sim[(2030, "matures")]["dQ"])
+res = pd.DataFrame({"buy": [f"P{round(100 * (1 - a))}" for a in COST_RATIOS], "Q* (GW), fresh draws": Q, "± SE": se,
+                    "Q* (GW), Part II draws": [ref[f"{a:.2f}"] for a in COST_RATIOS]},
+                   index=pd.Index([f"{a:.2f}" for a in COST_RATIOS], name="α = c_cap/c_short"))
+show(res, {"Q* (GW), fresh draws": "{:.1f}", "± SE": "{:.1f}", "Q* (GW), Part II draws": "{:.1f}"})
 ''')
 
 md("""

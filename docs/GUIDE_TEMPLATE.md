@@ -22,7 +22,7 @@ flowchart LR
     DQ --> PX["Peak-load or price users<br/>push every sample through p(ΔQ)"]
 ```
 
-The demo has four parts, one figure each: **A** reproduce the paper's §4 (Fig. 1); **B** map where the newsvendor rule beats square-root staffing (Fig. 2); **C** show that AI queries form a Cox process whose per-query noise vanishes at grid scale (Fig. 3); **D** build the distributions of new PJM peak load ΔQ and of AI electricity use, read capacity as a quantile (Fig. 4), and hand the energy samples to presenter 3, who turns them into water.
+The talk runs in three parts. **Part I** derives the newsvendor first-order condition, which makes capacity a quantile, and checks it by brute force on the ΔQ samples (Fig. 0). **Part II** is the demo, in four computational parts with one figure each. **Part III** writes the whole method as eight lines of pseudocode (§8) and runs it once more with fresh random numbers. The demo parts: **A** reproduce the paper's §4 (Fig. 1); **B** map where the newsvendor rule beats square-root staffing (Fig. 2); **C** show that AI queries form a Cox process whose per-query noise vanishes at grid scale (Fig. 3); **D** build the distributions of new PJM peak load ΔQ and of AI electricity use, read capacity as a quantile (Fig. 4), and hand the energy samples to presenter 3, who turns them into water.
 
 ---
 
@@ -38,7 +38,7 @@ The demo has four parts, one figure each: **A** reproduce the paper's §4 (Fig. 
 | 6 | Law of large numbers; CLT scaling | CV of a sum of n i.i.d. terms ∝ 1/√n; here CV²(S) = e^{σ²}/n̄ + CV²rate | `cox.py::cv_daily_energy`, `simulate_cv_curve` · cell 4, Fig. 3 | Shows the per-query noise vanishes at grid scale but the rate floor does not | Standard | `test_cv_formula_and_floor`; simulation in Fig. 3 |
 | 7 | Birth–death chain, detailed balance, Erlang-A, flow balance | π(n) ∝ Π_{k≤n} λ/d(k), d(n) = min(n,b)μ + (n−b)⁺γ; λ = μE[min(N,b)] + γE[Q] | `erlang_a.py::queue_moments` · cell 2 | Exact cost of any capacity level for a given rate | Bassamboo et al. 2010 §3 p.7, eq. (1) | `test_erlang_a.py`: M/M/∞, b = 0, flow balance (1e-9), monotone E[Q], truncation < 1e-12 |
 | 8 | Integer optimization of a unimodal cost | Π discretely convex ⇒ b* = min{b : Π(b+1) − Π(b) ≥ 0} | `capacity_rules.py::optimal_capacity`, `brute_force_optimal` · cell 2 | b* for every case and grid cell | Bassamboo et al. 2010, footnote p.7 (convexity), p.10 (search) | `test_cost_unimodal_in_b`, `test_bisection_equals_brute_force` |
-| 9 | Fluid approximation and newsvendor | E[(N−b)⁺] ≈ E[(Λ−μb)⁺]/γ ⇒ Π̄(b) = (p + h/γ)E[(Λ−μb)⁺] + cb ⇒ P(Λ > μb̄) = c/(μ(p + h/γ)) | `capacity_rules.py::newsvendor_capacity`; `erlang_a.py::newsvendor_cost` · cell 2 | The rule under test; the same logic gives quantile capacity | Bassamboo et al. 2010 eqs. (2)–(3), pp.7–8 | `test_newsvendor_uniform_cases_match_paper`, `test_newsvendor_all_paper_table_entries` |
+| 9 | Fluid approximation and newsvendor | E[(N−b)⁺] ≈ E[(Λ−μb)⁺]/γ ⇒ Π̄(b) = (p + h/γ)E[(Λ−μb)⁺] + cb ⇒ P(Λ > μb̄) = c/(μ(p + h/γ)) | `capacity_rules.py::newsvendor_capacity`; `erlang_a.py::newsvendor_cost` · Part I, cell 2 | The rule under test, derived in Part I; the same logic gives quantile capacity | Bassamboo et al. 2010 eqs. (2)–(3), pp.7–8 | `test_newsvendor_uniform_cases_match_paper`, `test_newsvendor_all_paper_table_entries` |
 | 10 | Square-root safety staffing (Halfin–Whitt / QED) | Known λ: b ≈ E + β√E, β = O(1) | `capacity_rules.py::known_rate_capacity`, `fit_safety_factor` · cell 2 | The competing rule; right when the rate is known | Halfin & Whitt 1981; Bassamboo et al. 2010 §4.2 pp.10–11 | `test_known_rate_rule_is_optimal_for_fixed_rates`; β in §4.1 |
 | 11 | Bassamboo et al. Theorem 1 | CV ≫ 1/√E ⇒ Π(b̄) = Π* + O(1/CV); CV ≪ 1/√E or ≍ ⇒ Π(b̄) = Π* + O(√E) (verbatim in §2.11) | Fig. 2; `capacity_rules.py::regime_grid`, `boundary_analysis` · cell 3 | Tells us which regime AI is in | Bassamboo et al. 2010 §5, p.15 | Regime map: switch at CV ≈ {{partB/meta/boundary/gamma/kappa_median|f2}}/√E |
 | 12 | Monte Carlo: quantiles, bootstrap SEs, seeds | q̂ₚ = empirical quantile; SE by bootstrap; mean SE = s/√n; probability SE = √(p̂(1−p̂)/n) | `pjm_load.py::quantile_table`, `simulate` · cell 5 | Every ΔQ number comes with its Monte Carlo error | Standard | `test_quantiles_stable_across_seeds` |
@@ -48,7 +48,7 @@ The demo has four parts, one figure each: **A** reproduce the paper's §4 (Fig. 
 | 16 | Jensen's inequality; why the handoff is a distribution | p convex ⇒ E[p(X)] ≥ p(E X); p linear ⇒ equality | Handoff README · cell 6 | Linear consequences (water = intensity × energy) need only the mean; budgets and convex prices need the distribution | Standard | `test_jensen_gap_for_a_convex_price_curve` |
 | 17 | Electricity units, energy vs power, peak vs average, coincidence, PUE | P[GW] = N[/day] · e[Wh] / 24 h / 10⁹; E[TWh/yr] = P_avg[GW] × 8.76; peak = average × κ; PUE = facility/IT energy | `pjm_load.py::to_gw`, `energy_twh`, `scope_factor` · cells 5–6 | Turning Wh per query into GW of peak load and TWh of energy | Spec §6; Elsworth et al. 2025 (PUE included in 0.24 Wh) | `test_units_hand_calculation` (35.4 MW), `test_energy_units_hand_calculation`, `test_energy_consistent_with_peak_load_and_regions` |
 | 18 | PJM capacity market basics | Delivery year June–May; capacity bought ahead from the load forecast; firm vs non-firm large loads | `params.py::DELIVERY_YEARS`, `PJM_DC_GROWTH_GW` · cells 5–6 | Sets the horizon T and the 30 GW yardstick | PJM LAS (24 Nov 2025); PJM 2026 Load Forecast Report (as cited in spec §12) | — (definitions) |
-| 19 | Newsvendor reading of grid capacity (**analogy**) | min c_cap·Q + c_short·E(ΔQ − Q)⁺ ⇒ P(ΔQ > Q) = c_cap/c_short | `pjm_load.py::quantile_capacity`, `position_of` · cell 5, Fig. 4 | Turns the ΔQ distribution into a capacity decision | Bassamboo et al. 2010 eq. (3) by analogy | `test_quantile_capacity_is_the_fractile` |
+| 19 | Newsvendor reading of grid capacity (**analogy**) | min c_cap·Q + c_short·E(ΔQ − Q)⁺ ⇒ P(ΔQ > Q) = c_cap/c_short | `pjm_load.py::quantile_capacity`, `position_of`, `newsvendor_check` · Part I, cell 5, Part III, Figs. 0 and 4 | Turns the ΔQ distribution into a capacity decision | Bassamboo et al. 2010 eq. (3) by analogy | `test_quantile_capacity_is_the_fractile`, `test_newsvendor_check_minimizer_is_the_quantile`, `test_newsvendor_cost_curve_matches_brute_force` |
 | 20 | Sobol indices | Sᵢ = Var E[Y\|Xᵢ]/Var Y; additive independent Y ⇒ Sᵢ = Var gᵢ/Var Y; product of lognormals ⇒ Sᵢ = (e^{sᵢ²}−1)/(e^{S²}−1) | `scripts/run_all.py::sobol_part` | Which uncertainties drive ΔQ | Sobol' 2001; Saltelli et al. 2010 | SALib vs closed form within {{derived/sobol_max_diff|sci1}} |
 | 21 | Static vs dynamic decisions under uncertainty (the bridge to presenter 3) | Plan before Λ is known ⇒ a quantile (newsvendor); operate after demand arrives ⇒ online control that keeps a long-run budget (virtual queue, Lyapunov drift) | Notebook cell 6; handoff README | Connects capacity planning to water-aware scheduling | Bassamboo et al. 2010 §7(a), pp.21–22; presenter 3's references | — (concept) |
 | 22 | Operational water footprint and the energy boundary | Water = Σₜ eₜ[ρ_s1,t + θₜρ_s2,t] (e = server energy); with facility energy F = θe: Water = F(ρ_s1/θ + ρ_s2) | `pjm_load.py::energy_twh`, `write_energy_csvs` · cell 6 | What presenter 3 needs from us (energy, at an agreed boundary) | Li et al. 2025 §3.1 p.4 | Formula checked in the paper; boundary stated in the handoff |
@@ -78,7 +78,7 @@ Given Λ = λ, the number in system N is a birth–death chain: birth rate λ, d
 The paper notes that E[N − b]⁺ is convex in b, so Π is convex (footnote p.7). On integers we checked discrete convexity on a grid for the §4 cases: the smallest second difference is {{partA/summary/min_second_difference|sci1}}, i.e. zero up to rounding (`test_cost_unimodal_in_b`). For a discretely convex sequence the minimizer is the smallest b with Π(b+1) − Π(b) ≥ 0, so `optimal_capacity` bisects on the sign of that forward difference (O(log range) evaluations, equivalent to an integer golden-section search). The paper's own method, evaluating a large set of b (p.10), is `brute_force_optimal`; the two agree on all twelve Table 2–4 cases.
 
 ### 2.9 Fluid approximation and the newsvendor problem
-Ignore Poisson variability: fluid arrives at rate Λ and is served at rate μb, so the excess (Λ − μb)⁺ must abandon. Equating with the exact abandonment rate γE[Q] gives E[Q] ≈ E[(Λ − μb)⁺]/γ (p.8) and the cost Π̄(b) = (p + h/γ)E[(Λ − μb)⁺] + cb (eq. 2). Since d/db E[(Λ − μb)⁺] = −μP(Λ > μb), setting Π̄′(b) = c − μ(p + h/γ)P(Λ > μb) = 0 gives the **critical fractile** P(Λ > μb̄) = c/(μ(p + h/γ)) (eq. 3). With the §4 parameters it is (1/3)/(4/3) = {{partA/params/fractile|f2}}, so b̄ is the 75th percentile, rounded down as in every table of the paper. Our implementation uses an exact version of this split: E[Q] = (λ − μb)⁺/γ + D(λ, b) with D ≥ 0 (by flow balance D = (μ/γ)E[idle servers] above μb), so Π = Π̄ + (h + pγ)E[D(Λ, b)]. D is negligible more than ~12√b from μb, which makes wide rate distributions cheap to integrate (§4.2).
+Ignore Poisson variability: fluid arrives at rate Λ and is served at rate μb, so the excess (Λ − μb)⁺ must abandon. Equating with the exact abandonment rate γE[Q] gives E[Q] ≈ E[(Λ − μb)⁺]/γ (p.8) and the cost Π̄(b) = (p + h/γ)E[(Λ − μb)⁺] + cb (eq. 2). Since d/db E[(Λ − μb)⁺] = −μP(Λ > μb), setting Π̄′(b) = c − μ(p + h/γ)P(Λ > μb) = 0 gives the **critical fractile** P(Λ > μb̄) = c/(μ(p + h/γ)) (eq. 3); the second derivative μ²(p + h/γ)f_Λ(μb) ≥ 0 makes it a minimum. With the §4 parameters it is (1/3)/(4/3) = {{partA/params/fractile|f2}}, so b̄ is the 75th percentile, rounded down as in every table of the paper. Our implementation uses an exact version of this split: E[Q] = (λ − μb)⁺/γ + D(λ, b) with D ≥ 0 (by flow balance D = (μ/γ)E[idle servers] above μb), so Π = Π̄ + (h + pγ)E[D(Λ, b)]. D is negligible more than ~12√b from μb, which makes wide rate distributions cheap to integrate (§4.2).
 
 ### 2.10 Square-root safety staffing (Halfin–Whitt / QED regime)
 With a known rate the number in system fluctuates by about √E around E = λ/μ, so the best capacity is the offered load plus a safety margin proportional to √E: b ≈ E + β√E (paper eq. 4, p.11). Halfin & Whitt (1981) showed that with this scaling the probability of waiting stays strictly between 0 and 1 as the system grows: the "quality and efficiency driven" (QED) regime. Our known-rate rule gives β = {{partA/summary/beta_by_case/lambda = 37.5|f2}}, {{partA/summary/beta_by_case/lambda = 75|f2}} and {{partA/summary/beta_by_case/lambda = 300|f2}} for λ = 37.5, 75 and 300 (least-squares fit {{partA/summary/beta_fit_fixed_cases|f2}}), consistent with the paper's "β ≈ 1·√λ" (p.10). The rule is right when the rate is known (variability-dominated regime) and wrong when it is not: on U[200, 400] it is {{derived/kr_gap_300|pct1}} above optimal.
@@ -119,7 +119,7 @@ Energy (Wh) is power (W) × time. Average power = energy per day ÷ 24 h, so P[G
 PJM delivery years run June to May; capacity for a delivery year is procured ahead of time on the basis of PJM's load forecast, which is why our horizon is summer 2028 for DY 2028/29 (T = 3) and summer 2030 for DY 2030/31 (T = 5). Large data-centre loads are classed as firm or non-firm (curtailable). Numbers as cited in the spec (§12; documents checked by the author, not re-opened in this build): PJM hosts about 40% of US data centres in 2025, its load-adjustment process supports up to ~30 GW of data-centre growth 2025–2030 with minimum 36-month ramps, and non-firm load counts as zero before 2030 and half from 2030 in most zones (PJM Load Analysis Subcommittee, 24 Nov 2025). The 2026 Load Forecast Report gives a 2036 summer peak of 222,106 MW, +65,733 MW over ten years, so the 2026 forecast peak is about {{partD/pjm_summer_peak_2026_GW|f0}} GW. A price model for new load, if the group keeps one, would take the ΔQ samples (§2.16).
 
 ### 2.19 The newsvendor reading of grid capacity (an analogy)
-If each GW of capacity costs c_cap and each GW of unmet peak load costs c_short, then choosing Q to minimize c_cap·Q + c_short·E[(ΔQ − Q)⁺] gives, exactly as in §2.9, P(ΔQ > Q) = c_cap/c_short: **capacity is a quantile of ΔQ**. With a cost ratio of 0.10 that is P90 = {{partD/quantile_capacity/2030_matures/0.10|f1}} GW for 2030/31, against a median of {{partD/quantile_capacity/2030_matures/0.50|f1}} GW. This is an **analogy, not PJM's method**: PJM procures against a sloped demand curve and a reliability requirement, not a single cost ratio. What carries over is the logic: when uncertainty about the rate dominates, the hedge must be sized to that uncertainty, not to √E. Read backwards, PJM's ~30 GW sits at the {{partD/pjm_30GW/2030_matures/quantile|pct1}} quantile of our ΔQ (implied ratio {{partD/pjm_30GW/2030_matures/implied_cost_ratio|f3}}). That 30 GW covers **all** data-centre growth, not AI alone, so the comparison is indicative only.
+If each GW of capacity costs c_cap and each GW of unmet peak load costs c_short, then choosing Q to minimize c_cap·Q + c_short·E[(ΔQ − Q)⁺] gives, exactly as in §2.9, P(ΔQ > Q) = c_cap/c_short: **capacity is a quantile of ΔQ**. In textbook terms the overage cost is c_o = c_cap and the underage cost c_u = c_short − c_cap, so F(Q*) = c_u/(c_u + c_o); the median is optimal only when c_o = c_u, i.e. when a shortfall costs twice a unit of capacity. The derivation does not need a density: for the empirical law of the draws the minimizer is the order statistic at rank 1 − c_cap/c_short, which is how §4.5 checks it by brute force (Fig. 0). With a cost ratio of 0.10 that is P90 = {{partD/quantile_capacity/2030_matures/0.10|f1}} GW for 2030/31, against a median of {{partD/quantile_capacity/2030_matures/0.50|f1}} GW. This is an **analogy, not PJM's method**: PJM procures against a sloped demand curve and a reliability requirement, not a single cost ratio. What carries over is the logic: when uncertainty about the rate dominates, the hedge must be sized to that uncertainty, not to √E. Read backwards, PJM's ~30 GW sits at the {{partD/pjm_30GW/2030_matures/quantile|pct1}} quantile of our ΔQ (implied ratio {{partD/pjm_30GW/2030_matures/implied_cost_ratio|f3}}). That 30 GW covers **all** data-centre growth, not AI alone, so the comparison is indicative only.
 
 ### 2.20 Sobol indices
 For Y = f(X₁, …, X_k) with independent inputs, the first-order index Sᵢ = Var(E[Y|Xᵢ])/Var Y is the share of variance explained by Xᵢ alone, and the total index S_Tᵢ = E[Var(Y|X₋ᵢ)]/Var Y includes all its interactions. If Y = Σ gᵢ(Xᵢ) is additive, Sᵢ = Var gᵢ/Var Y and the Sᵢ sum to 1. ln P_T is a sum of independent group log-factors except that growth and (maturing) efficiency share λ, which leaves a small interaction ({{sobol/matures/log_scale/sum_closed_form|f3}} explained by first-order terms). We estimate the indices with SALib (Saltelli 2010 design, {{sobol/matures/n_model_runs|int}} model runs per structure) on parameter groups, and compare with the closed form computed from exact log-variances: the largest difference is {{derived/sobol_max_diff|sci1}}. On the linear scale a product of independent lognormals has Sᵢ = (e^{sᵢ²} − 1)/(e^{S²} − 1); our group factors are only approximately lognormal, and agreement there is rough (§4.7).
@@ -152,9 +152,10 @@ Distilled from `WORKLOG.md` (timestamps and problems are there).
 | 8 | Figures | Projector style; colour-blind-safe palette validated; each figure rendered and inspected | — | `outputs/figures/*.png, *.svg` | Titles state the finding | visual checks | DejaVu Sans (glyph coverage) |
 | 9 | Pipeline and handoff | `run_all.py`: everything to `summary.json`; CSVs, JSON, README for presenter 3 | — | `outputs/summary.json`, `outputs/handoff/` | P(ΔQ > 30 GW) = {{partD/quantiles/2030_matures/p_exceed|f3}} (2030/31 default) | `test_end_to_end.py` | Flag the unphysical tail for presenter 3 |
 | 10 | Sensitivity (optional) | SALib Sobol on ln P_T by parameter group; closed-form check | — | `summary.json` → `sobol` | S₁: growth {{sobol/matures/log_scale/S1/growth|f2}}, mix {{sobol/matures/log_scale/S1/mix|f2}}, base volume {{sobol/matures/log_scale/S1/base volume|f2}} | SALib vs closed form ≤ {{derived/sobol_max_diff|sci1}} | Log scale is the reliable one |
-| 11 | Notebook | 6 storyboard cells; live efficiency toggle | caches | `notebooks/demo.ipynb` | Runs top to bottom in seconds | nbconvert + error scan | Display errors do not fail cells, so the test scans outputs |
+| 11 | Notebook | Part I (derivation), demo cells 1–5, Part III (pseudocode), bridge cell 6; live toggles for efficiency and the cost ratio | caches | `notebooks/demo.ipynb` | Runs top to bottom in seconds | nbconvert + error scan | Display errors do not fail cells, so the test scans outputs |
 | 12 | Documentation | This guide (rendered from `summary.json`), references, README | `summary.json` | `docs/`, `README.md` | — | unresolved placeholders are an error | Numbers only through placeholders |
 | 13 | Presenter 3 moved to water | Added annualized energy (global, US, PJM; TWh/yr, no peak factor) to the model, summary and handoff; rewrote the bridge (notebook §6, handoff README, this guide) | Li et al. 2025 §3.1 (water formula) | `outputs/handoff/energy_samples_*.csv`, `README.md`, notebook cell 6 | PJM 2030 median {{partD/energy/cases/2030_matures/PJM/E/P50|f0}} TWh/yr (P90 {{partD/energy/cases/2030_matures/PJM/E/P90|f0}}) | `test_energy_units_hand_calculation`, `test_energy_consistent_with_peak_load_and_regions`, end-to-end | Hand over facility-level energy with the conversion to her formula; no water numbers computed here (her nugget) |
+| 14 | Talk order: derivation → demo → pseudocode | Derived the first-order condition (notebook Part I), checked it by brute force on the ΔQ draws, wrote the method as pseudocode (Part III) and reran it with fresh random numbers | Bassamboo et al. eqs. (2)–(3) | `pjm_load.py::newsvendor_check`, Fig. 0, notebook Parts I and III | Minimizer {{partD/newsvendor_check/2030_matures/0.10/argmin_Q|f2}} GW vs P90 {{partD/newsvendor_check/2030_matures/0.10/quantile_Q|f2}} GW; buying the median costs {{partD/newsvendor_check/2030_matures/0.10/excess_median|pct0}} more | `test_newsvendor_check_minimizer_is_the_quantile`, `test_newsvendor_cost_curve_matches_brute_force`, end-to-end | The check is exact by construction for the empirical law: it verifies the calculus and the code, not the model |
 
 ---
 
@@ -211,7 +212,7 @@ For σ = 1 the simulation is within {{derived/sim_sigma1_max_dev|pct1}} of theor
 
 ![Figure 3](../outputs/figures/fig3_cox_floor.png)
 
-### 4.5 New PJM peak load ΔQ (Fig. 4)
+### 4.5 New PJM peak load ΔQ (Figs. 0 and 4)
 
 {{partD/n_draws|int}} draws, seed {{partD/seed|raw}}, priors version {{partD/priors_version|raw}}; values in GW with bootstrap standard errors.
 
@@ -232,6 +233,14 @@ The ladder ends at {{derived/ladder_end_2030|int}} MW of P_T ({{derived/ladder_e
 **Quantile capacity** (newsvendor reading; analogy): buy Q with P(ΔQ > Q) = c_cap/c_short.
 
 {{TABLE:capacity}}
+
+**The first-order condition, checked by brute force** (Fig. 0; 2030/31, default efficiency). For each cost ratio: the quantile the FOC predicts, the minimizer of c_cap·Q + c_short·E(ΔQ − Q)⁺ over every sample value, its rank among the draws, and the extra expected cost of buying the median or the mean instead.
+
+{{TABLE:foc}}
+
+The sample cost is piecewise linear and convex with slope c_cap − c_short·(share of draws above Q), so its minimizer is the draw at rank 1 − c_cap/c_short: the FOC for the empirical law. The extra-cost columns depend on the unphysical far tail: capping draws at PJM's whole 2026 peak (~{{partD/pjm_summer_peak_2026_GW|f0}} GW) changes the extra cost of buying the median at ratio 0.10 from {{partD/newsvendor_check/2030_matures/0.10/excess_median|pct0}} to {{partD/newsvendor_check/2030_matures/0.10/excess_median_capped|pct0}}. The sign is robust; quote the size as roughly a third, not precisely.
+
+![Figure 0](../outputs/figures/fig0_newsvendor_foc.png)
 
 - **PJM's ~30 GW** sits at the {{partD/pjm_30GW/2030_matures/quantile|pct1}} quantile for 2030/31 (default; implied c_cap/c_short = {{partD/pjm_30GW/2030_matures/implied_cost_ratio|f3}}) and at the {{partD/pjm_30GW/2030_compounding/quantile|pct1}} quantile under compounding efficiency. It covers all data-centre growth, not AI alone.
 - **Cost of uncertainty** Q₀.₉ − median: {{partD/cost_of_uncertainty/2030_matures/gap|f1}} GW for 2030/31 (default), {{partD/cost_of_uncertainty/2028_matures/gap|f1}} GW for 2028/29. P90 is {{derived/pct_ratio_matures_P90_over_median_2030|f1}} times the median.
@@ -334,13 +343,32 @@ python3 -m venv .venv
 .venv/bin/jupyter lab notebooks/demo.ipynb            # the live demo
 ```
 
-Outputs: `outputs/figures/` (four figures, PNG at 200 dpi and SVG), `outputs/cache/` (regime map, Cox simulation), `outputs/summary.json` (every number), `outputs/handoff/` (CSVs, JSON, README for presenter 3). To use presenter 1's numbers, edit `PRESENTER1` in `src/aicap/params.py` and rerun.
+Outputs: `outputs/figures/` (five figures, Fig. 0 for Part I and Figs. 1–4, PNG at 200 dpi and SVG), `outputs/cache/` (regime map, Cox simulation), `outputs/summary.json` (every number), `outputs/handoff/` (CSVs, JSON, README for presenter 3). To use presenter 1's numbers, edit `PRESENTER1` in `src/aicap/params.py` and rerun.
 
 ---
 
 ## 8. Talk script
 
-**Figure 1: reproduction.** "This is the paper's Section 4, recomputed exactly. When the arrival rate is uncertain, sizing capacity at the 75th percentile of the rate, a newsvendor rule that ignores queueing noise entirely, lands within {{partA/summary/nv_gap_uncertain_max|pct1}} of optimal. When the rate is known, the same rule is {{partA/summary/nv_gap_known_min|pct0}}–{{partA/summary/nv_gap_known_max|pct0}} off, because now the √E queueing noise is all there is." *Takeaway: the right hedge depends on which uncertainty dominates.*
+Running order (about 13 minutes), the same as the notebook: **Part I** derivation (3 min) → **Part II** demo (7 min) → **Part III** pseudocode (1½ min) → closing bridge (1 min).
+
+### Part I · Derivation: the critical quantile (3 min)
+
+Board or slide version (the notebook's Part I has the same steps in LaTeX):
+
+1. **Problem.** Capacity Q is chosen before demand X is known. Expected cost Π̄(Q) = cQ + u·E(X − Q)⁺: c per unit of capacity, u > c per unit of shortfall.
+2. **Differentiate.** E(X − Q)⁺ = ∫_Q^∞ (x − Q) f(x) dx, so by the Leibniz rule (the boundary term vanishes) d/dQ E(X − Q)⁺ = −P(X > Q), and Π̄′(Q) = c − u·P(X > Q).
+3. **Convexity.** Π̄″(Q) = u·f(Q) ≥ 0, so the stationary point is the minimum.
+4. **First-order condition.** P(X > Q*) = c/u =: α, so Q* = F⁻¹(1 − α). If c ≥ u, buy nothing.
+5. **The paper.** X = Λ, capacity μb, u = p + h/γ: P(Λ > μb̄) = c/(μ(p + h/γ)) = {{partA/params/fractile|f2}}, so b̄ is the 75th percentile of Λ. The fluid step drops the Poisson noise, of order √E.
+6. **AI load.** X = ΔQ, c = c_cap, u = c_short: buy the (1 − c_cap/c_short) quantile of ΔQ.
+
+Say: "One more GW of capacity costs c_cap for sure. It saves c_short only if it gets used, which happens with probability P(ΔQ > Q). Keep buying until the two are equal. That one line is the heart of the talk: capacity is a quantile, set by a cost ratio." Then run the Part I cell (**Figure 0**): "Brute force over all {{partD/n_draws|int}} draws puts the minimum at {{partD/newsvendor_check/2030_matures/0.10/argmin_Q|f1}} GW, exactly the P90. Buying the median instead costs roughly a third more in expectation." *Takeaway: the first-order condition turns a cost ratio into a quantile.*
+
+### Part II · Demo (7 min)
+
+Lead-in: "The derivation threw away the queueing noise. Is that safe? The paper answers that; then we apply the rule to AI."
+
+**Figure 1: reproduction.** "This is the paper's Section 4, recomputed exactly. When the arrival rate is uncertain, the rule from Part I, sizing capacity at the 75th percentile of the rate and ignoring queueing noise entirely, lands within {{partA/summary/nv_gap_uncertain_max|pct1}} of optimal. When the rate is known, the same rule is {{partA/summary/nv_gap_known_min|pct0}}–{{partA/summary/nv_gap_known_max|pct0}} off, because now the √E queueing noise is all there is." *Takeaway: the right hedge depends on which uncertainty dominates.*
 
 **Figure 2: regime map.** "Blue means the quantile rule wins, red means the classic square-root rule wins. The switch follows Theorem 1's CV ∝ 1/√E line, about 1.4 times above it. AI at grid scale sits orders of magnitude to the right and above." *Takeaway: for AI, CV·√E is {{derived/ai_ratio_today_lo|f0}} to {{derived/ai_ratio_2030_hi|sci0}}, against a switch at about {{partB/meta/boundary/gamma/kappa_median|f1}}.*
 
@@ -348,14 +376,41 @@ Outputs: `outputs/figures/` (four figures, PNG at 200 dpi and SVG), `outputs/cac
 
 **Figure 4: capacity as a quantile.** "New PJM peak load from AI in 2030/31 has a median of {{partD/quantiles/2030_matures/P50|f1}} GW but a P90 of {{partD/quantiles/2030_matures/P90|f0}} GW. If a shortfall costs ten times as much as a GW of capacity, you buy the P90, not the median; the {{partD/cost_of_uncertainty/2030_matures/gap|f0}} GW difference is what uncertainty itself costs." Live: flip the efficiency toggle to compounding and the median drops to {{partD/quantiles/2030_compounding/P50|f1}} GW and P90 to {{partD/quantiles/2030_compounding/P90|f0}} GW; the quantile logic does not change. *Takeaway: the capacity bought is a high quantile, and that gap is where AI's uncertainty shows up on electric bills.*
 
-**Closing bridge to presenter 3 (cell 6).** "The same draws give AI's electricity use: in PJM in 2030 a median of {{partD/energy/cases/2030_matures/PJM/E/P50|f0}} TWh a year, with a P90 of {{partD/energy/cases/2030_matures/PJM/E/P90|f0}}. I've shown how much to plan for before we know the demand. Presenter 3 shows what each of those kilowatt-hours costs in water, on site for cooling and off site at the power plant, and how choosing where the computing runs keeps that within a budget." *Takeaway: planning sizes for a quantile; operating keeps the budget.*
+### Part III · The method as pseudocode (1½ min)
+
+```text
+SIZE-CAPACITY(priors, horizon T, cost ratio α = c_cap / c_short, draws n)
+
+  ▸ Step 1: is the newsvendor (fluid) step safe?                  Part II, Figs. 1–3
+  1   E ← offered load;  CV ← coefficient of variation of the rate
+  2   if CV·√E ≲ 1.4:  return the square-root rule  E + β√E
+
+  ▸ Step 2: sample what we do not know                            Part II, Fig. 4
+  3   for i = 1, …, n:
+  4       θᵢ ← one independent draw from each prior
+  5       ΔQᵢ ← P_T(θᵢ) − P_0(θᵢ)
+
+  ▸ Step 3: the first-order condition                             Part I
+  6   Q* ← empirical (1 − α) quantile of ΔQ₁, …, ΔQₙ      ▹ P(ΔQ > Q*) = α
+  7   SE ← std. dev. of line 6 over B bootstrap resamples of ΔQ
+  8   return Q*, SE
+```
+
+Code for each line: 2 `capacity_rules.known_rate_capacity`; 3 `pjm_load.simulate`; 4 `pjm_load.sample_params`; 5 `pjm_load.delta_q`; 6 `pjm_load.quantile_capacity`; 7 `pjm_load.quantile_table`.
+
+Say: "Step 1 is the regime test from the demo; for AI it never fires, since CV·√E is {{derived/ai_ratio_today_lo|f0}} or more against a switch at {{partB/meta/boundary/gamma/kappa_median|f1}}. Step 2 is the sampler. Step 3 is Part I's first-order condition, one line." Then run the Part III cell: lines 3–8 with fresh random numbers give the same capacities within their standard errors. *Takeaway: the method is short; the work is in knowing when its one-line rule is valid and in sampling the uncertainty honestly.*
+
+### Closing bridge to presenter 3 (1 min, cell 6)
+
+"The same draws give AI's electricity use: in PJM in 2030 a median of {{partD/energy/cases/2030_matures/PJM/E/P50|f0}} TWh a year, with a P90 of {{partD/energy/cases/2030_matures/PJM/E/P90|f0}}. I've shown how much to plan for before we know the demand. Presenter 3 shows what each of those kilowatt-hours costs in water, on site for cooling and off site at the power plant, and how choosing where the computing runs keeps that within a budget." *Takeaway: planning sizes for a quantile; operating keeps the budget.*
 
 **Likely questions**
-1. *Why not just use the mean or median forecast?* Because buying too little costs more than buying too much. The optimal order is the quantile where P(ΔQ > Q) equals the cost ratio. The median is optimal only when the two costs are equal.
+1. *Why not just use the mean or median forecast?* Because the costs are asymmetric: a GW bought but not needed wastes c_cap, a GW needed but not bought costs c_short − c_cap more than buying it would have. The first-order condition puts capacity where P(ΔQ > Q) equals c_cap/c_short; the median is optimal only when that ratio is ½, i.e. when a shortfall costs twice a unit of capacity. At ratio 0.10, buying the median raises the expected cost by about {{partD/newsvendor_check/2030_matures/0.10/excess_median|pct0}} with these draws.
 2. *Does PJM really buy a quantile?* Not literally: PJM procures against a sloped demand curve with a reliability target. The newsvendor reading is an analogy that shows why the hedge must scale with forecast uncertainty. PJM's ~30 GW for all data centres would sit at about the {{partD/pjm_30GW/2030_matures/quantile|pct0}} quantile of our AI-only distribution.
 3. *How sensitive is this to your priors?* Very: volume growth and query mix explain {{sobol/matures/log_scale/S1/growth|pct0}} and {{sobol/matures/log_scale/S1/mix|pct0}} of the log-variance. Halving their uncertainty shrinks the P90 − median gap by {{partD/halved_growth_mix_uncertainty/2030_matures/shrink_fraction|pct0}}. That is the policy hook: better forecasts are worth GW.
 4. *How does this connect to the water part?* Water scales with energy, so presenter 3 gets the same draws as electricity use (TWh/yr). Expected water needs only expected energy, but whether a water budget holds depends on the whole distribution: the same quantile logic. And where I treat siting as uncertain, presenter 3 makes it a decision.
 5. *Your paper reproduction doesn't match the paper's tables?* It matches Table 4 exactly; Tables 2, 3 and 7 seem to come from a different computation that no single parameter change can reproduce. Every version shows the same pattern: ≤ 1% when the rate is uncertain, several percent when it is known.
+6. *Why is the derivative of E(X − Q)⁺ just −P(X > Q)?* One more unit of capacity cuts the shortfall by one unit in exactly the outcomes where demand exceeds capacity, so on average by P(X > Q). Formally: Leibniz, or write E(X − Q)⁺ = ∫_Q^∞ P(X > x) dx. No density is needed: for a discrete or empirical law the condition becomes P(X < Q*) ≤ 1 − α ≤ P(X ≤ Q*), the definition of the (1 − α) quantile.
 
 ---
 
@@ -369,7 +424,9 @@ Outputs: `outputs/figures/` (four figures, PNG at 200 dpi and SVG), `outputs/cac
 | Offered load E | λ/μ, the average number of busy servers needed, in Erlangs |
 | CV | Coefficient of variation, standard deviation ÷ mean |
 | Newsvendor rule | Choose capacity at the quantile where P(demand > capacity) = cost of capacity ÷ cost of shortage |
-| Critical fractile | That probability, c/(μ(p + h/γ)) in the paper |
+| First-order condition (FOC) | Setting the derivative of expected cost to zero: c = u·P(X > Q*) for the newsvendor |
+| Critical fractile (critical quantile) | α = c/u, the probability that demand exceeds the optimal capacity; c/(μ(p + h/γ)) in the paper |
+| Overage / underage cost | Cost of one unit bought but not needed (c) / needed but not bought (u − c) |
 | Square-root safety staffing | b = E + β√E; hedges Poisson variability when the rate is known (Halfin–Whitt, QED regime) |
 | Cox process | Poisson process whose rate is itself random (doubly stochastic, mixed Poisson) |
 | Crossover n̄* | Volume where per-query noise equals rate uncertainty, e^{σ²}/CV²rate |

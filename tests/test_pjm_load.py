@@ -136,3 +136,24 @@ def test_energy_consistent_with_peak_load_and_regions():
             assert np.all(r["ET"]["global"] >= r["ET"]["US"]) and np.all(r["ET"]["US"] >= r["ET"]["PJM"])
     tables = pl.energy_tables(sim, n_boot=0)
     assert tables["cases"]["2030_matures"]["PJM"]["E"]["P50"] > tables["baseline_2025"]["PJM"]["P50"]
+
+
+def test_newsvendor_cost_curve_matches_brute_force():
+    """ratio*Q + E[(X - Q)^+] from tail sums equals the direct sample average."""
+    x = np.random.default_rng(3).lognormal(1.0, 1.2, 5_000)
+    cost = pl.newsvendor_cost_curve(x, 0.2)
+    for Q in (-1.0, 0.0, 0.7, 2.718, 10.0, x.max() + 1):
+        assert cost(Q) == pytest.approx(0.2 * Q + np.maximum(x - Q, 0).mean(), rel=1e-12, abs=1e-12)
+
+
+def test_newsvendor_check_minimizer_is_the_quantile():
+    """The first-order condition by brute force: the cost minimizer sits at rank 1 - ratio, at the quantile,
+    and buying the median costs more unless the ratio is 1/2."""
+    dq = pl.simulate(n=50_000)[(2030, "matures")]["dQ"]
+    chk = pl.newsvendor_check(dq)
+    for r, row in chk.items():
+        r = float(r)
+        assert row["argmin_rank"] == pytest.approx(1 - r, abs=2 / dq.size)
+        assert row["argmin_Q"] == pytest.approx(row["quantile_Q"], rel=1e-3)
+        assert row["excess_median"] >= -1e-12 and row["excess_mean"] >= -1e-12
+    assert chk["0.10"]["excess_median"] > 0.1 and chk["0.50"]["excess_median"] == pytest.approx(0, abs=1e-9)

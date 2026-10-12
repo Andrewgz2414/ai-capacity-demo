@@ -51,3 +51,10 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[-]` dropped (reason g
 - [x] Bridge rewritten: notebook intro and section 6, guide (overview, §2.16–2.18, new §2.21–2.22, §4.6, §5, §6, §8, glossary), README, references
 - [x] Tests: energy units and consistency with peak load; end-to-end checks of the new files
 - [x] Rerun, re-execute the notebook, re-render the guide, commit, push to GitHub
+
+## Change request (2026-10-12): talk order derivation → demo → pseudocode
+- [x] Notebook Part I: the newsvendor first-order condition derived step by step (general form, the paper's eq. 3, the AI reading), with a live brute-force check
+- [x] `pjm_load.newsvendor_cost_curve`, `newsvendor_check`; Figure 0 (`fig0_newsvendor_foc`: marginal analysis and expected cost)
+- [x] Notebook Part III: the method as eight lines of pseudocode mapped to the code, rerun with fresh random numbers
+- [x] Guide: overview, knowledge map rows 9 and 19, §2.9, §2.19, §3 step 14, §4.5 FOC table and Fig. 0, §7, §8 rewritten in the new order, Q1 corrected, Q6 added, glossary; README
+- [x] Tests: cost curve vs brute force, minimizer = quantile; end-to-end expects five figures

@@ -204,6 +204,16 @@ def t_capacity(s):
                      "2030/31 compounding"], rows)
 
 
+def t_foc(s):
+    C = s["partD"]["newsvendor_check"]["2030_matures"]
+    pc = lambda x: f"{100 * x:.0f}%"  # noqa: E731
+    rows = [[k, f"P{round(100 * (1 - float(k)))}", f"{r['quantile_Q']:.2f}", f"{r['argmin_Q']:.2f}",
+             f"{r['argmin_rank']:.4f}", pc(r["excess_median"]), pc(r["excess_mean"]), pc(r["excess_median_capped"])]
+            for k, r in C.items()]
+    return md_table(["c_cap/c_short", "quantile", "FOC: quantile (GW)", "brute-force minimizer (GW)",
+                     "its rank", "extra cost if buying the median", "… the mean", "… the median, draws capped"], rows)
+
+
 def t_ladder(s):
     L, Lc = s["partD"]["fermi_ladder"]["2030_matures"], s["partD"]["fermi_ladder"]["2030_compounding"]
     rows = []
@@ -313,7 +323,7 @@ def t_energy(s):
 
 
 TABLES = {"repro23": t_repro23, "energy": t_energy, "repro4": lambda s: t_repro_ext(s, "table4"), "repro7": lambda s: t_repro_ext(s, "table7"),
-          "quantiles": t_quantiles, "capacity": t_capacity, "ladder": t_ladder, "lognormal": t_lognormal,
+          "quantiles": t_quantiles, "capacity": t_capacity, "foc": t_foc, "ladder": t_ladder, "lognormal": t_lognormal,
           "sobol": t_sobol, "sobol_lin": t_sobol_lin, "priors": t_priors, "cox": t_cox, "kappa": t_kappa,
           "halved": t_halved}
 

@@ -13,7 +13,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .                    # installs the `aicap` package from src/
 .venv/bin/python -m pytest -q                           # unit + end-to-end tests
 .venv/bin/python scripts/run_all.py                     # figures, summary.json, handoff (seconds with caches)
-.venv/bin/jupyter lab notebooks/demo.ipynb              # the live demo (~12 min storyboard)
+.venv/bin/jupyter lab notebooks/demo.ipynb              # the live demo (~13 min: derivation, demo, pseudocode)
 ```
 
 `scripts/run_all.py --recompute` rebuilds the two caches (regime map and Cox simulation), which takes minutes. `scripts/build_guide.py` re-renders `docs/GUIDE.md` from `outputs/summary.json`. `scripts/build_notebook.py` regenerates the notebook from plain Python.
@@ -29,11 +29,11 @@ src/aicap/
   cox.py              compound/Cox Poisson model, simulation, regime numbers for AI
   params.py           every prior with range and source (presenter-1 block at the top)
   pjm_load.py         ΔQ and energy sampler, quantiles with bootstrap SEs, Fermi ladder, lognormal checks, handoff
-  plotting.py         projector style and the four figures
+  plotting.py         projector style and the five figures
 scripts/              precompute_regime.py, run_all.py, build_guide.py, build_notebook.py
-notebooks/demo.ipynb  the demo (cells 0–6), pre-run
+notebooks/demo.ipynb  the talk, pre-run: Part I derivation, demo cells 1–5, Part III pseudocode, bridge cell 6
 tests/                unit tests and end-to-end tests (marked slow)
-outputs/figures/      fig1_reproduction, fig2_regime_map, fig3_cox_floor, fig4_handoff (PNG 200 dpi + SVG)
+outputs/figures/      fig0_newsvendor_foc, fig1_reproduction, fig2_regime_map, fig3_cox_floor, fig4_handoff (PNG 200 dpi + SVG)
 outputs/cache/        regime_grid.npz, cox_sim.npz
 outputs/handoff/      energy_samples_2028.csv, energy_samples_2030.csv  (TWh/yr; for presenter 3, water)
                       dQ_samples_DY2028.csv, dQ_samples_DY2030.csv      (GW of PJM peak; for price users)
@@ -45,6 +45,14 @@ WORKLOG.md, TASKS.md  how the project was built
 ```
 
 The handoff CSVs (17–26 MB each) are not committed; `run_all.py` regenerates them byte-for-byte from the fixed seed. Setting `AICAP_OUTPUTS=/some/dir` redirects all outputs; the end-to-end tests use this.
+
+## How the talk runs
+
+1. **Derivation (Part I).** The newsvendor first-order condition, c_cap = c_short · P(ΔQ > Q*), makes capacity a quantile of demand. A brute-force check on the simulated draws confirms it (Fig. 0).
+2. **Demo (Part II).** When the quantile rule is safe (the paper, the regime map, the Cox process), and what it gives for AI load in PJM.
+3. **Pseudocode (Part III).** The whole method in eight lines, mapped to the code and rerun with fresh random numbers.
+
+The guide's §8 has the script for each part.
 
 ## Headline results (see the guide for the numbers with their errors)
 

@@ -217,6 +217,46 @@ def cost_of_uncertainty(dQ, q: float = 0.90) -> dict:
     return {"Q": float(Qq), "median": float(med), "gap": float(Qq - med), "q": q}
 
 
+def newsvendor_cost_curve(x, ratio: float):
+    """Expected cost per unit of shortage cost, Pibar(Q)/c_short = ratio*Q + E[(X - Q)^+], under the
+    empirical law of x. Returns a vectorized function of Q (exact; tail sums, O(log n) per Q)."""
+    xs = np.sort(np.asarray(x, dtype=float))
+    n = xs.size
+    tail = np.concatenate([np.cumsum(xs[::-1])[::-1], [0.0]])  # tail[k] = sum of xs[k:]
+
+    def cost(Q):
+        Q = np.asarray(Q, dtype=float)
+        k = np.searchsorted(xs, Q, side="right")
+        return ratio * Q + (tail[k] - Q * (n - k)) / n
+
+    return cost
+
+
+def newsvendor_check(dQ, ratios=COST_RATIOS, cap: float | None = PJM_SUMMER_PEAK_2026_GW) -> dict:
+    """The first-order condition checked by brute force: the minimizer of the simulated cost
+    ratio*Q + E[(dQ - Q)^+] over every sample value against the (1 - ratio) quantile, and the extra
+    expected cost of buying the median or the mean instead (also with draws capped at `cap`)."""
+    xs = np.sort(np.asarray(dQ, dtype=float))
+    med, mean = float(np.median(xs)), float(xs.mean())
+    capped = np.minimum(xs, cap) if cap is not None else None
+    out = {}
+    for r in ratios:
+        cost = newsvendor_cost_curve(xs, r)
+        k = int(np.argmin(cost(xs)))  # a piecewise-linear convex cost is minimized at a sample value
+        q = float(np.quantile(xs, 1 - r))
+        c_opt = float(cost(q))
+        row = {"argmin_Q": float(xs[k]), "argmin_rank": k / xs.size, "quantile_Q": q,
+               "cost_opt": c_opt, "median": med, "mean": mean,
+               "excess_median": float(cost(med)) / c_opt - 1, "excess_mean": float(cost(mean)) / c_opt - 1}
+        if capped is not None:
+            cc = newsvendor_cost_curve(capped, r)
+            qc = float(np.quantile(capped, 1 - r))
+            row.update(cap_GW=cap, excess_median_capped=float(cc(np.median(capped)) / cc(qc)) - 1,
+                       excess_mean_capped=float(cc(capped.mean()) / cc(qc)) - 1)
+        out[f"{r:.2f}"] = row
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Fermi ladder: median path from ChatGPT today to the PJM number
 # ---------------------------------------------------------------------------
@@ -435,6 +475,7 @@ def summarize(sim: dict, n_boot: int = 200, verbose: bool = True, energy_n_boot:
     out["P0_lognormal_check"] = lognormal_check(p0, 0, when="0")
     out.update(quantiles=q, quantile_capacity=cap, pjm_30GW=pos, cost_of_uncertainty=cou, tail=tail,
                lognormal_check=lnchk, cv_PT=cvs)
+    out["newsvendor_check"] = {"2030_matures": newsvendor_check(sim[(2030, "matures")]["dQ"])}
     out["fermi_ladder"] = {f"{y}_{s}": fermi_ladder(DELIVERY_YEARS[y]["T"], s)
                            for y in DELIVERY_YEARS for s in EFFICIENCY_STRUCTURES}
     th_med = median_params()

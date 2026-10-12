@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHES = ["regime_grid.npz", "cox_sim.npz"]
-FIGS = ["fig1_reproduction", "fig2_regime_map", "fig3_cox_floor", "fig4_handoff"]
+FIGS = ["fig0_newsvendor_foc", "fig1_reproduction", "fig2_regime_map", "fig3_cox_floor", "fig4_handoff"]
 
 pytestmark = pytest.mark.slow
 
@@ -78,6 +78,6 @@ def test_notebook_executes_without_errors(tmp_outputs):
     assert not errors, errors
     n_images = sum("image/png" in o.get("data", {}) for c in nb.cells if c.cell_type == "code"
                    for o in c.get("outputs", []))
-    assert n_images == 4
+    assert n_images == 5
     assert any("Bridge:" in o.get("text", "") for c in nb.cells if c.cell_type == "code"
                for o in c.get("outputs", []))

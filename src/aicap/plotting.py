@@ -1,4 +1,4 @@
-"""Shared figure style and the four demo figures.
+"""Shared figure style and the five demo figures (Fig. 0: the first-order condition; Figs. 1-4).
 
 Projector style: fonts >= 14 pt (12.5 pt only for secondary annotations), data lines >= 2.5 pt,
 solid hairline grid, light surface. Colours come from a validated colour-blind-safe reference
@@ -81,6 +81,70 @@ def _boxed_legend(ax, *args, **kw):
     kw.setdefault("frameon", True)
     leg = ax.legend(*args, facecolor=SURFACE, edgecolor=AXIS, framealpha=0.95, **kw)
     return leg
+
+
+# ---------------------------------------------------------------------------
+# Figure 0: the newsvendor first-order condition on the Delta Q samples
+# ---------------------------------------------------------------------------
+
+
+def fig0_newsvendor_foc(dq, ratio: float = 0.10, label: str = "2030/31", x_max: float | None = None):
+    """Left: marginal cost c_cap against marginal saving c_short P(dQ > Q); they cross at the quantile.
+    Right: the expected cost c_cap Q + c_short E(dQ - Q)^+ (units of c_short), minimized at the same Q."""
+    from .pjm_load import newsvendor_cost_curve
+
+    apply_style()
+    dq = np.sort(np.asarray(dq, dtype=float))
+    q_star, med = float(np.quantile(dq, 1 - ratio)), float(np.median(dq))
+    x_max = x_max or 10 * np.ceil(max(60.0, 1.5 * q_star) / 10)
+    x = np.linspace(0.0, x_max, 601)
+    ccdf = 1 - np.searchsorted(dq, x, side="right") / dq.size
+    pq = round(100 * (1 - ratio))
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 6.4))
+
+    ax = axes[0]
+    ax.fill_between(x, ratio, ccdf, where=ccdf >= ratio, color=BLUE_RAMP[100], lw=0, zorder=1)
+    ax.plot(x, ccdf, color=ACCENT, lw=3.2, zorder=3, label=r"saving: $c_\mathrm{short}\,P(\Delta Q > Q)$")
+    ax.axhline(ratio, color=SECOND, lw=3.0, zorder=2, label=r"cost: $c_\mathrm{cap}$")
+    ax.plot([q_star], [ratio], marker="o", ms=12, color=INK, mec=SURFACE, mew=2, zorder=5)
+    ax.annotate(f"Q* = P{pq} = {q_star:.1f} GW", (q_star, ratio), xytext=(12, 12), textcoords="offset points",
+                ha="left", va="bottom", fontsize=14, fontweight="bold", color=INK, bbox=LABEL_BOX)
+    ax.text(0.97, 0.52 if ratio < 0.35 else 0.28,  # above the cost line, or below it for high ratios
+            "left of Q*:  saving > cost, add capacity\nright of Q*:  cost > saving, stop",
+            transform=ax.transAxes, ha="right", va="center", fontsize=13.5, color=INK2, bbox=LABEL_BOX, zorder=4)
+    ax.set_ylim(0, 1.02)
+    ax.set_ylabel(r"per GW of capacity  (units of $c_\mathrm{short}$)")
+    ax.set_title("Marginal analysis: one more GW", loc="left", pad=10)
+    _boxed_legend(ax, loc="upper right", fontsize=13.5)
+
+    ax = axes[1]
+    cost = newsvendor_cost_curve(dq, ratio)
+    y = cost(x)
+    c_star, c_med = float(cost(q_star)), float(cost(med))
+    ax.plot(x, y, color=ACCENT, lw=3.2, zorder=3)
+    ax.plot([q_star], [c_star], marker="o", ms=12, color=INK, mec=SURFACE, mew=2, zorder=5)
+    left = q_star < 0.3 * x_max  # keep the label inside the axes
+    ax.annotate(f"minimum at P{pq} = {q_star:.1f} GW", (q_star, c_star), xytext=(-12 if left else 0, -16),
+                textcoords="offset points", ha="left" if left else "center", va="top", fontsize=14,
+                fontweight="bold", color=INK)
+    ax.plot([med], [c_med], marker="o", ms=11, color=MUTED, mec=SURFACE, mew=2, zorder=4)
+    ax.annotate(f"median {med:.1f} GW:\nexpected cost +{100 * (c_med / c_star - 1):.0f}%", (med, c_med),
+                xytext=(14, 8), textcoords="offset points", ha="left", va="bottom", fontsize=13.5, color=INK2,
+                bbox=LABEL_BOX)
+    lo, hi = float(y.min()), float(y.max())
+    ax.set_ylim(lo - 0.12 * (hi - lo), hi + 0.08 * (hi - lo))
+    ax.set_ylabel(r"expected cost  (units of $c_\mathrm{short}$)")
+    ax.set_title(r"Expected cost  $c_\mathrm{cap}Q + c_\mathrm{short}\,E(\Delta Q - Q)^+$", loc="left", pad=10)
+
+    for ax in axes:
+        ax.set_xlim(0, x_max)
+        ax.set_xlabel(f"capacity Q  (GW of new PJM peak load, DY {label})")
+        ax.axvline(q_star, color=AXIS, lw=1.3, zorder=0)
+    fig.suptitle(rf"First-order condition: $c_\mathrm{{cap}} = c_\mathrm{{short}}\,P(\Delta Q > Q^*)$, "
+                 rf"so with $c_\mathrm{{cap}}/c_\mathrm{{short}}$ = {ratio:.2f} buy the P{pq}",
+                 x=0.5, y=0.975, fontsize=18, fontweight="bold")
+    fig.subplots_adjust(left=0.075, right=0.985, bottom=0.13, top=0.84, wspace=0.28)
+    return fig
 
 
 # ---------------------------------------------------------------------------

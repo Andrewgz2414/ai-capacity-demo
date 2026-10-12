@@ -1,4 +1,4 @@
-"""Run every part of the demo and write outputs/summary.json, the four figures and the handoff.
+"""Run every part of the demo and write outputs/summary.json, the five figures and the handoff.
 
 Usage:
     python scripts/run_all.py                # uses the caches in outputs/cache if present
@@ -265,7 +265,9 @@ def main(argv=None) -> dict:
     boxes = cox.regime_boxes(ai)
     fig = plotting.fig2_regime_map(summary["partB"].pop("_grid"), kappa, boxes)
     plotting.save(fig, "fig2_regime_map")
-    # Figure 4
+    # Figure 0 (the first-order condition) and Figure 4
+    fig = plotting.fig0_newsvendor_foc(sim[(2030, "matures")]["dQ"], 0.10)
+    plotting.save(fig, "fig0_newsvendor_foc")
     fig = plotting.fig4_handoff(sim[(2030, "matures")]["dQ"], sim[(2030, "compounding")]["dQ"], COST_RATIOS,
                                 pjm_level=PJM_DC_GROWTH_GW, pjm_peak=PJM_SUMMER_PEAK_2026_GW)
     plotting.save(fig, "fig4_handoff")
